@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+ENV/
+env/
+
+# Node
+node_modules/
+.next/
+out/
+.vercel
+
+# Archivos de configuración sensibles
+.env
+.env.local
+.env.*.local
+
+# Archivos temporales y outputs
+backend/outputs/
+backend/temp/
+backend/uploads/
+*.xlsx
+*.xls
+*.xlsb
+*.xlsm
+*.csv
+!backend/maestra_example.xlsx
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Cache
+.cache/
