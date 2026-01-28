@@ -21,6 +21,34 @@ Variables de entorno requeridas:
 
 import os
 import sys
+import pandas as pd
+import numpy as np
+import re
+import warnings
+import os
+import gc
+import io
+import zipfile
+import chardet
+from datetime import datetime, timedelta
+from typing import Tuple, Optional, List, Dict, Any
+from tqdm import tqdm
+import threading
+import time
+import shutil
+import paramiko
+from dataclasses import dataclass, field
+
+# Machine Learning
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from collections import Counter
+
+# Configuración
+warnings.filterwarnings('ignore')
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_colwidth', 60)
+pd.set_option('display.float_format', lambda x: f'{x:,.2f}')
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LECTURA DE PARÁMETROS DESDE VARIABLES DE ENTORNO
@@ -1567,6 +1595,421 @@ class ArchivoAnexo:
 
 LOG.success("Clases y configuración definidas")
 LOG.dedent()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CLASES DE MACHINE LEARNING (MOVIDO AL INICIO)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ClasificadorTextoMedico:
+    """
+    Clasificador ML para detectar si un texto es:
+    - Manual tarifario (SOAT, ISS, PROPIO)
+    - Descripción de procedimiento médico
+    - Porcentaje o valor numérico
+    """
+
+    # Vocabulario de referencia para manuales tarifarios
+    VOCABULARIO_MANUAL = [
+        'SOAT', 'SOAT VIGENTE', 'SOAT UVT', 'SOAT UVB', 'TARIFARIO SOAT',
+        'ISS', 'ISS 2001', 'ISS2001', 'TARIFARIOS ISS', 'TARIFA ISS',
+        'TARIFA PROPIA', 'TARIFAS PROPIAS', 'PROPIA', 'PROPIO', 'PROPIAS',
+        'INSTITUCIONAL', 'TARIFAS INSTITUCIONALES', 'TARIFA INSTITUCIONAL',
+        'DECRETO 2423', 'DECRETO 2644', 'UVT', 'UVB', 'TARIFA PLENA',
+        'MENOS', 'PLENO', 'VIGENTE', 'MANUAL TARIFARIO'
+    ]
+
+    # Vocabulario de procedimientos médicos
+    VOCABULARIO_MEDICO = [
+        'CONSULTA', 'TERAPIA', 'NEURAL', 'CIRUGIA', 'PROCEDIMIENTO',
+        'TRATAMIENTO', 'EVALUACION', 'VALORACION', 'DIAGNOSTICO',
+        'EXAMEN', 'BIOPSIA', 'ECOGRAFIA', 'RADIOGRAFIA', 'TOMOGRAFIA',
+        'RESONANCIA', 'LABORATORIO', 'HEMOGRAMA', 'CURACION', 'SUTURA',
+        'INYECCION', 'APLICACION', 'NEBULIZACION', 'HOSPITALIZACION',
+        'CONTROL', 'SEGUIMIENTO', 'ESPECIALISTA', 'MEDICINA', 'GENERAL',
+        'PEDIATRIA', 'GINECOLOGIA', 'ORTOPEDIA', 'CARDIOLOGIA', 'NEUROLOGIA',
+        'PSIQUIATRIA', 'PSICOLOGIA', 'FISIOTERAPIA', 'FONOAUDIOLOGIA',
+        'ODONTOLOGIA', 'OPTOMETRIA', 'ANESTESIA', 'URGENCIA', 'AMBULANCIA',
+        'SANGRE', 'ORINA', 'GLUCOSA', 'COLESTEROL', 'TRIGLICERIDOS',
+        'ELECTROCARDIOGRAMA', 'ENDOSCOPIA', 'COLONOSCOPIA', 'MAMOGRAFIA',
+        'QUIMIOTERAPIA', 'RADIOTERAPIA', 'DIALISIS', 'TRASPLANTE', 'PROTESIS',
+        'IMPLANTE', 'REHABILITACION', 'TERAPIA OCUPACIONAL', 'TERAPIA FISICA',
+        'CONSULTA DE', 'VISITA DE', 'ATENCION DE', 'SERVICIO DE'
+    ]
+
+    def __init__(self):
+        """Inicializa el clasificador y entrena el vectorizador."""
+        # Crear corpus de entrenamiento
+        self.corpus_manual = self.VOCABULARIO_MANUAL
+        self.corpus_medico = self.VOCABULARIO_MEDICO
+
+        # Entrenar vectorizador TF-IDF
+        self.vectorizer = TfidfVectorizer(
+            analyzer='char_wb',
+            ngram_range=(2, 4),
+            lowercase=True,
+            max_features=1000
+        )
+
+        # Entrenar con todo el vocabulario
+        todo_corpus = self.corpus_manual + self.corpus_medico
+        self.vectorizer.fit(todo_corpus)
+
+        # Vectores de referencia
+        self.vec_manual = self.vectorizer.transform(self.corpus_manual)
+        self.vec_medico = self.vectorizer.transform(self.corpus_medico)
+
+        # Centroide de cada clase
+        self.centroide_manual = np.asarray(self.vec_manual.mean(axis=0)).flatten()
+        self.centroide_medico = np.asarray(self.vec_medico.mean(axis=0)).flatten()
+
+        print("✅ Clasificador ML entrenado")
+        print(f"   • Vocabulario manual: {len(self.corpus_manual)} términos")
+        print(f"   • Vocabulario médico: {len(self.corpus_medico)} términos")
+
+    def clasificar(self, texto: str) -> Dict[str, Any]:
+        """
+        Clasifica un texto y retorna probabilidades.
+
+        Returns:
+            Dict con:
+            - 'tipo': 'MANUAL', 'MEDICO', 'PORCENTAJE', 'DESCONOCIDO'
+            - 'confianza': 0.0 a 1.0
+            - 'scores': diccionario con scores de cada clase
+        """
+        if pd.isna(texto) or str(texto).strip() == '':
+            return {'tipo': 'VACIO', 'confianza': 1.0, 'scores': {}}
+
+        texto = str(texto).strip()
+        texto_upper = texto.upper()
+
+        # 1. Reglas rápidas basadas en patrones
+        # ─────────────────────────────────────────────────────────────────────
+
+        # Es un porcentaje o número
+        if re.match(r'^[+-]?[\d,\.%\s]+$', texto):
+            return {'tipo': 'PORCENTAJE', 'confianza': 0.95, 'scores': {'porcentaje': 0.95}}
+
+        # Contiene palabras clave de manual tarifario
+        palabras_manual = ['SOAT', 'ISS', 'TARIFA', 'DECRETO', 'UVT', 'UVB', 'PROPIA', 'PROPIO', 'INSTITUCIONAL']
+        for palabra in palabras_manual:
+            if palabra in texto_upper:
+                return {'tipo': 'MANUAL', 'confianza': 0.9, 'scores': {'manual': 0.9}}
+
+        # Contiene palabras clave médicas
+        palabras_medicas = ['CONSULTA', 'TERAPIA', 'CIRUGIA', 'PROCEDIMIENTO', 'EXAMEN',
+                           'TRATAMIENTO', 'BIOPSIA', 'ECOGRAFIA', 'LABORATORIO']
+        for palabra in palabras_medicas:
+            if palabra in texto_upper:
+                return {'tipo': 'MEDICO', 'confianza': 0.85, 'scores': {'medico': 0.85}}
+
+        # 2. Clasificación ML con TF-IDF
+        # ─────────────────────────────────────────────────────────────────────
+        try:
+            vec_texto = self.vectorizer.transform([texto_upper])
+            vec_array = np.asarray(vec_texto.todense()).flatten()
+
+            # Calcular similitud con centroides
+            sim_manual = cosine_similarity([vec_array], [self.centroide_manual])[0][0]
+            sim_medico = cosine_similarity([vec_array], [self.centroide_medico])[0][0]
+
+            # Normalizar scores
+            total = sim_manual + sim_medico + 0.001
+            score_manual = sim_manual / total
+            score_medico = sim_medico / total
+
+            scores = {'manual': score_manual, 'medico': score_medico}
+
+            if score_manual > score_medico and score_manual > 0.4:
+                return {'tipo': 'MANUAL', 'confianza': score_manual, 'scores': scores}
+            elif score_medico > score_manual and score_medico > 0.4:
+                return {'tipo': 'MEDICO', 'confianza': score_medico, 'scores': scores}
+            else:
+                return {'tipo': 'DESCONOCIDO', 'confianza': max(score_manual, score_medico), 'scores': scores}
+
+        except Exception as e:
+            return {'tipo': 'ERROR', 'confianza': 0.0, 'scores': {}, 'error': str(e)}
+
+    def es_descripcion_medica(self, texto: str) -> Tuple[bool, float]:
+        """
+        Verifica si un texto parece ser una descripción médica.
+
+        Returns:
+            (es_medico, confianza)
+        """
+        resultado = self.clasificar(texto)
+        return resultado['tipo'] == 'MEDICO', resultado['confianza']
+
+    def es_manual_tarifario(self, texto: str) -> Tuple[bool, float]:
+        """
+        Verifica si un texto parece ser un manual tarifario válido.
+
+        Returns:
+            (es_manual, confianza)
+        """
+        resultado = self.clasificar(texto)
+        return resultado['tipo'] == 'MANUAL', resultado['confianza']
+
+# Crear instancia global
+clasificador_ml = ClasificadorTextoMedico()
+
+class ETLConsolidadoT25_ML:
+    """
+    ═══════════════════════════════════════════════════════════════════════════
+    ETL CONSOLIDADO T25 - VERSIÓN CON MACHINE LEARNING
+    ═══════════════════════════════════════════════════════════════════════════
+    Sistema inteligente que detecta y corrige automáticamente cuando:
+    - manual_tarifario contiene descripciones médicas
+    - porcentaje_manual_tarifario contiene el manual real
+    - Los valores están intercambiados entre columnas
+    ═══════════════════════════════════════════════════════════════════════════
+    """
+
+    ANOS_IGNORAR = {'1996', '2001', '2016', '2022', '2023', '2024', '2025', '2644', '2423', '780'}
+
+    PATRON_NUMERO = re.compile(r'[+-]?\d+(?:[,\.]\d+)?')
+    PATRON_PORCENTAJE_FINAL = re.compile(r'[+-]\s*(\d+(?:[,\.]\d+)?)\s*$')
+    PATRON_MENOS = re.compile(r'MENOS\s*(\d+(?:[,\.]\d+)?)', re.IGNORECASE)
+    PATRON_MAS = re.compile(r'(?:MAS|\+)\s*(\d+(?:[,\.]\d+)?)', re.IGNORECASE)
+    PATRON_DECIMAL = re.compile(r'^(-?0\.\d+)$')
+
+    def __init__(self, clasificador: ClasificadorTextoMedico, chunk_size: int = 50000):
+        """Inicializa el ETL con el clasificador ML."""
+        self.clasificador = clasificador
+        self.chunk_size = chunk_size
+        self.stats = {
+            'total_registros': 0,
+            'columnas_intercambiadas': 0,
+            'manuales_normalizados': 0,
+            'porcentajes_extraidos': 0,
+            'anomalias_detectadas': [],
+            'correcciones_ml': []
+        }
+        self.resultados = {}
+
+    def _detectar_y_corregir_anomalia(self, row: pd.Series) -> Dict[str, Any]:
+        """
+        Detecta si hay anomalía en la fila y sugiere corrección.
+
+        Anomalías detectadas:
+        1. manual_tarifario tiene descripción médica
+        2. porcentaje_manual_tarifario tiene el manual real
+        3. Valores intercambiados
+
+        Returns:
+            Dict con correcciones sugeridas
+        """
+        manual = str(row.get('manual_tarifario', '')).strip()
+        porcentaje = str(row.get('porcentaje_manual_tarifario', '')).strip()
+        descripcion = str(row.get('descripcion_del_cups', '')).strip()
+
+        correccion = {
+            'necesita_correccion': False,
+            'nuevo_manual': manual,
+            'nuevo_porcentaje': porcentaje,
+            'razon': None,
+            'confianza': 0.0
+        }
+
+        if not manual:
+            return correccion
+
+        # Clasificar el contenido de manual_tarifario
+        clasif_manual = self.clasificador.clasificar(manual)
+        clasif_porcentaje = self.clasificador.clasificar(porcentaje)
+
+        # CASO 1: manual_tarifario tiene descripción médica
+        if clasif_manual['tipo'] == 'MEDICO' and clasif_manual['confianza'] > 0.6:
+            # Verificar si porcentaje tiene el manual real
+            if clasif_porcentaje['tipo'] == 'MANUAL' and clasif_porcentaje['confianza'] > 0.5:
+                correccion['necesita_correccion'] = True
+                correccion['nuevo_manual'] = porcentaje
+                correccion['nuevo_porcentaje'] = '0'  # Extraer del nuevo manual si hay
+                correccion['razon'] = f"ML detectó descripción médica en manual_tarifario (conf: {clasif_manual['confianza']:.2f})"
+                correccion['confianza'] = clasif_manual['confianza']
+                return correccion
+
+        # CASO 2: manual_tarifario es similar a descripcion_del_cups
+        if descripcion and len(manual) > 20:
+            manual_words = set(manual.upper().split())
+            desc_words = set(descripcion.upper().split())
+            if len(manual_words) > 0 and len(desc_words) > 0:
+                similitud = len(manual_words & desc_words) / min(len(manual_words), len(desc_words))
+                if similitud > 0.5:  # Más del 50% de palabras en común
+                    if clasif_porcentaje['tipo'] == 'MANUAL':
+                        correccion['necesita_correccion'] = True
+                        correccion['nuevo_manual'] = porcentaje
+                        correccion['nuevo_porcentaje'] = '0'
+                        correccion['razon'] = f"manual_tarifario similar a descripción ({similitud:.0%})"
+                        correccion['confianza'] = similitud
+                        return correccion
+
+        # CASO 3: manual_tarifario tiene formato de tarifa (número grande)
+        try:
+            valor_manual = float(manual.replace(',', '.').replace('$', '').strip())
+            if valor_manual > 1000:  # Parece una tarifa, no un manual
+                if clasif_porcentaje['tipo'] == 'MANUAL':
+                    correccion['necesita_correccion'] = True
+                    correccion['nuevo_manual'] = porcentaje
+                    correccion['nuevo_porcentaje'] = '0'
+                    correccion['razon'] = f"manual_tarifario contiene tarifa ({valor_manual:,.0f})"
+                    correccion['confianza'] = 0.9
+                    return correccion
+        except:
+            pass
+
+        return correccion
+
+    def _extraer_porcentaje(self, texto: str) -> Optional[float]:
+        """Extrae porcentaje de forma inteligente."""
+        if pd.isna(texto) or str(texto).strip() == '':
+            return None
+
+        texto = str(texto).strip()
+        texto_upper = texto.upper()
+
+        if 'PLENA' in texto_upper or 'PLENO' in texto_upper:
+            if not re.search(r'[+-]\s*\d+', texto_upper):
+                return 0.0
+
+        texto_sin_pct = texto.replace('%', '')
+
+        match = self.PATRON_PORCENTAJE_FINAL.search(texto_sin_pct)
+        if match:
+            try:
+                valor = float(match.group(1).replace(',', '.'))
+                if '-' in texto_sin_pct:
+                    valor = -abs(valor)
+                if -100 <= valor <= 200:
+                    return valor
+            except:
+                pass
+
+        match = self.PATRON_MENOS.search(texto_sin_pct)
+        if match:
+            try:
+                return -float(match.group(1).replace(',', '.'))
+            except:
+                pass
+
+        match = self.PATRON_MAS.search(texto_sin_pct)
+        if match:
+            try:
+                return float(match.group(1).replace(',', '.'))
+            except:
+                pass
+
+        match = self.PATRON_DECIMAL.match(texto_sin_pct.strip())
+        if match:
+            try:
+                return round(float(match.group(1)) * 100, 2)
+            except:
+                pass
+
+        numeros = self.PATRON_NUMERO.findall(texto_sin_pct)
+        for num_str in reversed(numeros):
+            try:
+                num = float(num_str.replace(',', '.'))
+                if str(int(abs(num))) in self.ANOS_IGNORAR:
+                    continue
+                if num > 1000:
+                    continue
+                if -100 <= num <= 200:
+                    if 'MENOS' in texto_upper or f'-{num_str}' in texto:
+                        num = -abs(num)
+                    return num
+            except:
+                continue
+
+        return None
+
+    def _normalizar_manual(self, texto: str) -> str:
+        """Normaliza el manual tarifario."""
+        if pd.isna(texto) or str(texto).strip() == '':
+            return 'PROPIO'
+
+        texto = str(texto).strip()
+        texto_upper = texto.upper()
+
+        # PROPIO
+        if re.search(r'\bPROPIA?S?\b|INSTITUCIONAL|TARIA\s*PROPIA', texto_upper):
+            return 'PROPIO'
+
+        # ISS
+        if re.search(r'\bISS\b', texto_upper) and not re.search(r'\bSOAT\b', texto_upper):
+            return 'ISS'
+
+        # SOAT
+        if re.search(r'\bSOAT\b|\bUVT\b|\bUVB\b|DECRETO\s*2423|DECRETO\s*2644', texto_upper):
+            return 'SOAT'
+
+        # Números puros -> PROPIO
+        if re.match(r'^[\d,\.\s]+$', texto):
+            return 'PROPIO'
+
+        return texto
+
+    def _procesar_fila(self, row: pd.Series) -> Dict[str, Any]:
+        """
+        Procesa una fila completa con detección ML.
+        """
+        resultado = {
+            'manual_tarifario': '',
+            'porcentaje_manual_tarifario': 0.0,
+            'correccion_aplicada': False,
+            'log': None
+        }
+
+        # 1. Detectar anomalías
+        correccion = self._detectar_y_corregir_anomalia(row)
+
+        if correccion['necesita_correccion']:
+            # Usar valores corregidos
+            manual_raw = correccion['nuevo_manual']
+            porcentaje_raw = correccion['nuevo_porcentaje']
+            resultado['correccion_aplicada'] = True
+            resultado['log'] = correccion['razon']
+        else:
+            manual_raw = str(row.get('manual_tarifario', '')).strip()
+            porcentaje_raw = str(row.get('porcentaje_manual_tarifario', '')).strip()
+
+        # 2. Normalizar manual
+        resultado['manual_tarifario'] = self._normalizar_manual(manual_raw)
+
+        # 3. Extraer porcentaje
+        tarifa = row.get('tarifa_unitaria_en_pesos', '0')
+        try:
+            tarifa_num = float(str(tarifa).replace(',', '.'))
+        except:
+            tarifa_num = 0
+
+        # Si porcentaje es texto de manual o propio -> 0
+        porcentaje_upper = porcentaje_raw.upper()
+        if any(p in porcentaje_upper for p in ['PROPIO', 'PROPIA', 'INSTITUCIONAL', 'PLENA', 'PLENO']):
+            resultado['porcentaje_manual_tarifario'] = 0.0
+        else:
+            # Extraer porcentaje
+            pct = self._extraer_porcentaje(porcentaje_raw)
+            if pct is not None:
+                # Verificar que no sea igual a la tarifa
+                if tarifa_num > 0 and abs(pct - tarifa_num) < 1:
+                    resultado['porcentaje_manual_tarifario'] = 0.0
+                elif pct > 1000:  # Probable tarifa duplicada
+                    resultado['porcentaje_manual_tarifario'] = 0.0
+                else:
+                    resultado['porcentaje_manual_tarifario'] = round(pct, 2)
+            else:
+                resultado['porcentaje_manual_tarifario'] = 0.0
+
+        return resultado
+
+# Crear instancia global
+try:
+    clasificador_ml = ClasificadorTextoMedico()
+    etl_ml_helper = ETLConsolidadoT25_ML(clasificador_ml)
+except Exception as e:
+    print(f"⚠️ Error inicializando Clasificador ML: {e}")
+    clasificador_ml = None
+    etl_ml_helper = None
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CELDA 3A: UTILIDADES Y FUNCIONES DE CONVERSIÓN
@@ -3980,7 +4423,35 @@ else:
         'alertas_generadas': 0
     }
 
-    consolidado_total = []
+    # consolidado_total = []  <-- ELIMINADO PARA AHORRAR MEMORIA
+    
+    # 🆕 v15.1: BATCH PROCESSING PARA EVITAR OOM
+    BATCH_SIZE = 5000
+    batch_buffer = []
+    temp_csv_file = f"temp_consolidado_{int(time.time())}.csv"
+    csv_headers_written = False
+    total_registros_procesados = 0
+    
+    def procesar_y_guardar_batch(buffer, archivo_csv, es_primer_batch):
+        if not buffer: return False, 0
+        
+        try:
+            df_batch = pd.DataFrame(buffer)
+            
+            # Aplicar ETL ML si está disponible
+            if etl_ml_helper:
+                # Usar un nombre genérico para el log por batch
+                df_batch = etl_ml_helper.procesar_dataframe(df_batch, f"Batch Procesamiento")
+            
+            # Guardar
+            modo = 'w' if es_primer_batch else 'a'
+            header = es_primer_batch
+            
+            df_batch.to_csv(archivo_csv, mode=modo, header=header, index=False, encoding='utf-8-sig')
+            return True, len(df_batch)
+        except Exception as e:
+            LOG.error(f"Error guardando batch: {e}")
+            return False, 0
     todas_alertas = []
     alertas_set = set()
     resumen_contratos = []
@@ -4231,7 +4702,17 @@ else:
                         s['contrato'] = id_c
                         s['origen_tarifa'] = origen
                         s['fecha_de_acuerdo'] = fecha if fecha else ''
-                        consolidado_total.append(s)
+                        batch_buffer.append(s)
+
+                        # Procesar batch si está lleno
+                        if len(batch_buffer) >= BATCH_SIZE:
+                            LOG.info(f"💾 Guardando batch intermedio ({len(batch_buffer)} registros)...")
+                            ok_batch, n_regs = procesar_y_guardar_batch(batch_buffer, temp_csv_file, not csv_headers_written)
+                            if ok_batch:
+                                csv_headers_written = True
+                                total_registros_procesados += n_regs
+                            batch_buffer = [] # Limpiar memoria
+                            gc.collect()
 
                     regs += len(servs)
                 else:
@@ -4265,12 +4746,23 @@ else:
         except: pass
 
         LOG.dedent()
+        LOG.dedent()
         LOG.contract_end(exito, regs, time.time() - t_c, '' if exito else 'Sin servicios')
+
+    # Procesar remanentes al final del loop
+    if batch_buffer:
+        LOG.info(f"💾 Guardando últimos {len(batch_buffer)} registros...")
+        ok_batch, n_regs = procesar_y_guardar_batch(batch_buffer, temp_csv_file, not csv_headers_written)
+        if ok_batch:
+            csv_headers_written = True
+            total_registros_procesados += n_regs
+        batch_buffer = []
+        gc.collect()
 
     LOG.stats_summary()
 
     print(f"\n📊 RESUMEN DE PROCESAMIENTO:")
-    print(f"   • Registros consolidados: {len(consolidado_total):,}")
+    print(f"   • Registros consolidados: {total_registros_procesados:,}")
     print(f"   • Alertas generadas: {len(todas_alertas)} (sin duplicados)")
     print(f"   • Archivos sin formato POSITIVA: {len(archivos_no_positiva)}")
     print(f"   • Contratos sin fecha en maestra: {len(contratos_sin_fecha)}")
@@ -4307,8 +4799,22 @@ nombre_consolidado = nombres_legibles.get(MODO_OPERACION, 'Consolidado')
 
 LOG.indent()
 
-if consolidado_total:
-    total_registros = len(consolidado_total)
+LOG.indent()
+
+# Cargar consolidado final desde CSV
+df_consolidado = None
+if os.path.exists(temp_csv_file):
+    try:
+        if total_registros_procesados > 0:
+            LOG.info("🔄 Cargando resultado final para exportación...")
+            # Leer con tipos string para preservar formatos
+            df_consolidado = pd.read_csv(temp_csv_file, dtype=str)
+            df_consolidado = df_consolidado.replace({'nan': '', 'NaN': ''})
+    except Exception as e:
+        LOG.error(f"Error cargando CSV temporal: {e}")
+
+if df_consolidado is not None and not df_consolidado.empty:
+    total_registros = len(df_consolidado)
     LOG.info(f"Total de registros a exportar: {total_registros:,}")
 
     if total_registros > MAX_FILAS_POR_HOJA:
@@ -4316,7 +4822,7 @@ if consolidado_total:
         LOG.warning(f"   Se dividirá en múltiples hojas (máx {MAX_FILAS_POR_HOJA:,} por hoja)")
 
     try:
-        df_consolidado = pd.DataFrame(consolidado_total)
+        # df_consolidado ya está creado
         archivo = exportar_consolidado_multisheet(
             df_consolidado,
             f"CONSOLIDADO_{suf}",
@@ -4328,7 +4834,7 @@ if consolidado_total:
         LOG.error(f"Error exportando consolidado: {str(e)}")
         LOG.info("Intentando exportar a CSV como alternativa...")
         try:
-            df_consolidado = pd.DataFrame(consolidado_total)
+            # df_consolidado ya está creado
             archivo_csv = exportar_consolidado_csv(df_consolidado, f"CONSOLIDADO_{suf}", log=LOG, nombre_legible=nombre_consolidado)
             archivos_generados.append(archivo_csv)
         except Exception as e2:
@@ -4432,843 +4938,7 @@ if archivos_no_positiva:
 LOG.dedent()
 LOG.info(f"Total archivos generados: {len(archivos_generados)}")
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SECCIÓN DE TRANSICIÓN: CONSOLIDADOR → ETL
-# ══════════════════════════════════════════════════════════════════════════════
 
-print("\n" + "═"*70)
-print("🔗 INICIANDO TRANSICIÓN AL ETL CON MACHINE LEARNING")
-print("═"*70)
-
-# Buscar el archivo CONSOLIDADO generado
-archivo_consolidado = None
-for archivo in archivos_generados:
-    if 'CONSOLIDADO' in archivo.upper() and archivo.endswith('.xlsx'):
-        archivo_consolidado = archivo
-        break
-
-if archivo_consolidado and os.path.exists(archivo_consolidado):
-    print(f"\n✅ Archivo consolidado encontrado: {archivo_consolidado}")
-    print(f"📦 Tamaño: {os.path.getsize(archivo_consolidado)/1024/1024:.2f} MB")
-
-    # Renombrar el archivo original como "Consolidado_Crudo"
-    import shutil
-    ts_crudo = datetime.now().strftime('%Y-%m-%d_%H-%M')
-    archivo_crudo = f"Consolidado_Crudo_{ts_crudo}.xlsx"
-    shutil.copy2(archivo_consolidado, archivo_crudo)
-
-    # Eliminar el archivo con nombre antiguo de la lista
-    archivos_generados.remove(archivo_consolidado)
-    os.remove(archivo_consolidado)
-
-    # Agregar el archivo renombrado a la lista
-    archivos_generados.append(archivo_crudo)
-    print(f"📝 Renombrado a: {archivo_crudo}")
-
-    # Leer el archivo como bytes para el ETL
-    with open(archivo_crudo, 'rb') as f:
-        contenido_archivo = f.read()
-    nombre_archivo = archivo_crudo
-
-    print(f"✅ Archivo cargado en memoria para ETL")
-else:
-    print("❌ ERROR: No se encontró archivo CONSOLIDADO para procesar")
-    print(f"   Archivos disponibles: {archivos_generados}")
-    contenido_archivo = None
-    nombre_archivo = None
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ETL CONSOLIDADOR T25 CON MACHINE LEARNING - INTEGRADO
-# ══════════════════════════════════════════════════════════════════════════════
-
-#@title 1.2 Importar Librerías { display-mode: "form" }
-
-import pandas as pd
-import numpy as np
-import re
-import warnings
-import os
-import gc
-import io
-import zipfile
-import chardet
-from datetime import datetime
-from typing import Tuple, Optional, List, Dict, Any
-from tqdm import tqdm
-# from google.colab import files  # No disponible en local
-# from IPython.display import display, HTML  # No disponible en local
-
-# Machine Learning
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from collections import Counter
-
-# Configuración
-warnings.filterwarnings('ignore')
-pd.set_option('display.max_columns', None)
-pd.set_option('display.max_colwidth', 60)
-pd.set_option('display.float_format', lambda x: f'{x:,.2f}')
-
-print("="*70)
-print("🧠 ETL CONSOLIDADO T25 - EDICIÓN MACHINE LEARNING")
-print("="*70)
-print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-print("✅ Librerías cargadas correctamente")
-
-#@title 2.1 Clasificador Inteligente de Texto { display-mode: "form" }
-
-class ClasificadorTextoMedico:
-    """
-    Clasificador ML para detectar si un texto es:
-    - Manual tarifario (SOAT, ISS, PROPIO)
-    - Descripción de procedimiento médico
-    - Porcentaje o valor numérico
-    """
-
-    # Vocabulario de referencia para manuales tarifarios
-    VOCABULARIO_MANUAL = [
-        'SOAT', 'SOAT VIGENTE', 'SOAT UVT', 'SOAT UVB', 'TARIFARIO SOAT',
-        'ISS', 'ISS 2001', 'ISS2001', 'TARIFARIOS ISS', 'TARIFA ISS',
-        'TARIFA PROPIA', 'TARIFAS PROPIAS', 'PROPIA', 'PROPIO', 'PROPIAS',
-        'INSTITUCIONAL', 'TARIFAS INSTITUCIONALES', 'TARIFA INSTITUCIONAL',
-        'DECRETO 2423', 'DECRETO 2644', 'UVT', 'UVB', 'TARIFA PLENA',
-        'MENOS', 'PLENO', 'VIGENTE', 'MANUAL TARIFARIO'
-    ]
-
-    # Vocabulario de procedimientos médicos
-    VOCABULARIO_MEDICO = [
-        'CONSULTA', 'TERAPIA', 'NEURAL', 'CIRUGIA', 'PROCEDIMIENTO',
-        'TRATAMIENTO', 'EVALUACION', 'VALORACION', 'DIAGNOSTICO',
-        'EXAMEN', 'BIOPSIA', 'ECOGRAFIA', 'RADIOGRAFIA', 'TOMOGRAFIA',
-        'RESONANCIA', 'LABORATORIO', 'HEMOGRAMA', 'CURACION', 'SUTURA',
-        'INYECCION', 'APLICACION', 'NEBULIZACION', 'HOSPITALIZACION',
-        'CONTROL', 'SEGUIMIENTO', 'ESPECIALISTA', 'MEDICINA', 'GENERAL',
-        'PEDIATRIA', 'GINECOLOGIA', 'ORTOPEDIA', 'CARDIOLOGIA', 'NEUROLOGIA',
-        'PSIQUIATRIA', 'PSICOLOGIA', 'FISIOTERAPIA', 'FONOAUDIOLOGIA',
-        'ODONTOLOGIA', 'OPTOMETRIA', 'ANESTESIA', 'URGENCIA', 'AMBULANCIA',
-        'SANGRE', 'ORINA', 'GLUCOSA', 'COLESTEROL', 'TRIGLICERIDOS',
-        'ELECTROCARDIOGRAMA', 'ENDOSCOPIA', 'COLONOSCOPIA', 'MAMOGRAFIA',
-        'QUIMIOTERAPIA', 'RADIOTERAPIA', 'DIALISIS', 'TRASPLANTE', 'PROTESIS',
-        'IMPLANTE', 'REHABILITACION', 'TERAPIA OCUPACIONAL', 'TERAPIA FISICA',
-        'CONSULTA DE', 'VISITA DE', 'ATENCION DE', 'SERVICIO DE'
-    ]
-
-    def __init__(self):
-        """Inicializa el clasificador y entrena el vectorizador."""
-        # Crear corpus de entrenamiento
-        self.corpus_manual = self.VOCABULARIO_MANUAL
-        self.corpus_medico = self.VOCABULARIO_MEDICO
-
-        # Entrenar vectorizador TF-IDF
-        self.vectorizer = TfidfVectorizer(
-            analyzer='char_wb',
-            ngram_range=(2, 4),
-            lowercase=True,
-            max_features=1000
-        )
-
-        # Entrenar con todo el vocabulario
-        todo_corpus = self.corpus_manual + self.corpus_medico
-        self.vectorizer.fit(todo_corpus)
-
-        # Vectores de referencia
-        self.vec_manual = self.vectorizer.transform(self.corpus_manual)
-        self.vec_medico = self.vectorizer.transform(self.corpus_medico)
-
-        # Centroide de cada clase
-        self.centroide_manual = np.asarray(self.vec_manual.mean(axis=0)).flatten()
-        self.centroide_medico = np.asarray(self.vec_medico.mean(axis=0)).flatten()
-
-        print("✅ Clasificador ML entrenado")
-        print(f"   • Vocabulario manual: {len(self.corpus_manual)} términos")
-        print(f"   • Vocabulario médico: {len(self.corpus_medico)} términos")
-
-    def clasificar(self, texto: str) -> Dict[str, Any]:
-        """
-        Clasifica un texto y retorna probabilidades.
-
-        Returns:
-            Dict con:
-            - 'tipo': 'MANUAL', 'MEDICO', 'PORCENTAJE', 'DESCONOCIDO'
-            - 'confianza': 0.0 a 1.0
-            - 'scores': diccionario con scores de cada clase
-        """
-        if pd.isna(texto) or str(texto).strip() == '':
-            return {'tipo': 'VACIO', 'confianza': 1.0, 'scores': {}}
-
-        texto = str(texto).strip()
-        texto_upper = texto.upper()
-
-        # 1. Reglas rápidas basadas en patrones
-        # ─────────────────────────────────────────────────────────────────────
-
-        # Es un porcentaje o número
-        if re.match(r'^[+-]?[\d,\.%\s]+$', texto):
-            return {'tipo': 'PORCENTAJE', 'confianza': 0.95, 'scores': {'porcentaje': 0.95}}
-
-        # Contiene palabras clave de manual tarifario
-        palabras_manual = ['SOAT', 'ISS', 'TARIFA', 'DECRETO', 'UVT', 'UVB', 'PROPIA', 'PROPIO', 'INSTITUCIONAL']
-        for palabra in palabras_manual:
-            if palabra in texto_upper:
-                return {'tipo': 'MANUAL', 'confianza': 0.9, 'scores': {'manual': 0.9}}
-
-        # Contiene palabras clave médicas
-        palabras_medicas = ['CONSULTA', 'TERAPIA', 'CIRUGIA', 'PROCEDIMIENTO', 'EXAMEN',
-                           'TRATAMIENTO', 'BIOPSIA', 'ECOGRAFIA', 'LABORATORIO']
-        for palabra in palabras_medicas:
-            if palabra in texto_upper:
-                return {'tipo': 'MEDICO', 'confianza': 0.85, 'scores': {'medico': 0.85}}
-
-        # 2. Clasificación ML con TF-IDF
-        # ─────────────────────────────────────────────────────────────────────
-        try:
-            vec_texto = self.vectorizer.transform([texto_upper])
-            vec_array = np.asarray(vec_texto.todense()).flatten()
-
-            # Calcular similitud con centroides
-            sim_manual = cosine_similarity([vec_array], [self.centroide_manual])[0][0]
-            sim_medico = cosine_similarity([vec_array], [self.centroide_medico])[0][0]
-
-            # Normalizar scores
-            total = sim_manual + sim_medico + 0.001
-            score_manual = sim_manual / total
-            score_medico = sim_medico / total
-
-            scores = {'manual': score_manual, 'medico': score_medico}
-
-            if score_manual > score_medico and score_manual > 0.4:
-                return {'tipo': 'MANUAL', 'confianza': score_manual, 'scores': scores}
-            elif score_medico > score_manual and score_medico > 0.4:
-                return {'tipo': 'MEDICO', 'confianza': score_medico, 'scores': scores}
-            else:
-                return {'tipo': 'DESCONOCIDO', 'confianza': max(score_manual, score_medico), 'scores': scores}
-
-        except Exception as e:
-            return {'tipo': 'ERROR', 'confianza': 0.0, 'scores': {}, 'error': str(e)}
-
-    def es_descripcion_medica(self, texto: str) -> Tuple[bool, float]:
-        """
-        Verifica si un texto parece ser una descripción médica.
-
-        Returns:
-            (es_medico, confianza)
-        """
-        resultado = self.clasificar(texto)
-        return resultado['tipo'] == 'MEDICO', resultado['confianza']
-
-    def es_manual_tarifario(self, texto: str) -> Tuple[bool, float]:
-        """
-        Verifica si un texto parece ser un manual tarifario válido.
-
-        Returns:
-            (es_manual, confianza)
-        """
-        resultado = self.clasificar(texto)
-        return resultado['tipo'] == 'MANUAL', resultado['confianza']
-
-# Crear instancia global
-clasificador_ml = ClasificadorTextoMedico()
-
-#@title 2.2 Probar el Clasificador ML { display-mode: "form" }
-#@markdown ### 🧪 **Prueba el clasificador con ejemplos**
-
-print("="*70)
-print("🧪 PRUEBAS DEL CLASIFICADOR ML")
-print("="*70)
-
-# Ejemplos de prueba
-ejemplos = [
-    # Manuales tarifarios
-    "SOAT VIGENTE",
-    "TARIFA PROPIA",
-    "ISS 2001 + 80%",
-    "DECRETO 2644 UVT",
-    "TARIFAS INSTITUCIONALES",
-
-    # Descripciones médicas
-    "CONSULTA DE MEDICINA GENERAL",
-    "TERAPIA NEURAL POR SESION",
-    "CIRUGIA DE RODILLA",
-    "ECOGRAFIA ABDOMINAL",
-    "LABORATORIO HEMOGRAMA",
-
-    # Porcentajes
-    "-30%",
-    "0.05",
-    "ISS + 65%",
-
-    # Casos ambiguos
-    "CONSULTA",
-    "PROPIA",
-    "VALORACION"
-]
-
-print(f"\n{'Texto':<45} {'Tipo':<12} {'Confianza':<10}")
-print("─"*70)
-
-for ejemplo in ejemplos:
-    resultado = clasificador_ml.clasificar(ejemplo)
-    print(f"{ejemplo:<45} {resultado['tipo']:<12} {resultado['confianza']:.2f}")
-
-#@title 3.1 Clase ETL con Machine Learning { display-mode: "form" }
-
-class ETLConsolidadoT25_ML:
-    """
-    ═══════════════════════════════════════════════════════════════════════════
-    ETL CONSOLIDADO T25 - VERSIÓN CON MACHINE LEARNING
-    ═══════════════════════════════════════════════════════════════════════════
-    Sistema inteligente que detecta y corrige automáticamente cuando:
-    - manual_tarifario contiene descripciones médicas
-    - porcentaje_manual_tarifario contiene el manual real
-    - Los valores están intercambiados entre columnas
-    ═══════════════════════════════════════════════════════════════════════════
-    """
-
-    ANOS_IGNORAR = {'1996', '2001', '2016', '2022', '2023', '2024', '2025', '2644', '2423', '780'}
-
-    PATRON_NUMERO = re.compile(r'[+-]?\d+(?:[,\.]\d+)?')
-    PATRON_PORCENTAJE_FINAL = re.compile(r'[+-]\s*(\d+(?:[,\.]\d+)?)\s*$')
-    PATRON_MENOS = re.compile(r'MENOS\s*(\d+(?:[,\.]\d+)?)', re.IGNORECASE)
-    PATRON_MAS = re.compile(r'(?:MAS|\+)\s*(\d+(?:[,\.]\d+)?)', re.IGNORECASE)
-    PATRON_DECIMAL = re.compile(r'^(-?0\.\d+)$')
-
-    def __init__(self, clasificador: ClasificadorTextoMedico, chunk_size: int = 50000):
-        """Inicializa el ETL con el clasificador ML."""
-        self.clasificador = clasificador
-        self.chunk_size = chunk_size
-        self.stats = {
-            'total_registros': 0,
-            'columnas_intercambiadas': 0,
-            'manuales_normalizados': 0,
-            'porcentajes_extraidos': 0,
-            'anomalias_detectadas': [],
-            'correcciones_ml': []
-        }
-        self.resultados = {}
-
-    def _detectar_y_corregir_anomalia(self, row: pd.Series) -> Dict[str, Any]:
-        """
-        Detecta si hay anomalía en la fila y sugiere corrección.
-
-        Anomalías detectadas:
-        1. manual_tarifario tiene descripción médica
-        2. porcentaje_manual_tarifario tiene el manual real
-        3. Valores intercambiados
-
-        Returns:
-            Dict con correcciones sugeridas
-        """
-        manual = str(row.get('manual_tarifario', '')).strip()
-        porcentaje = str(row.get('porcentaje_manual_tarifario', '')).strip()
-        descripcion = str(row.get('descripcion_del_cups', '')).strip()
-
-        correccion = {
-            'necesita_correccion': False,
-            'nuevo_manual': manual,
-            'nuevo_porcentaje': porcentaje,
-            'razon': None,
-            'confianza': 0.0
-        }
-
-        if not manual:
-            return correccion
-
-        # Clasificar el contenido de manual_tarifario
-        clasif_manual = self.clasificador.clasificar(manual)
-        clasif_porcentaje = self.clasificador.clasificar(porcentaje)
-
-        # CASO 1: manual_tarifario tiene descripción médica
-        if clasif_manual['tipo'] == 'MEDICO' and clasif_manual['confianza'] > 0.6:
-            # Verificar si porcentaje tiene el manual real
-            if clasif_porcentaje['tipo'] == 'MANUAL' and clasif_porcentaje['confianza'] > 0.5:
-                correccion['necesita_correccion'] = True
-                correccion['nuevo_manual'] = porcentaje
-                correccion['nuevo_porcentaje'] = '0'  # Extraer del nuevo manual si hay
-                correccion['razon'] = f"ML detectó descripción médica en manual_tarifario (conf: {clasif_manual['confianza']:.2f})"
-                correccion['confianza'] = clasif_manual['confianza']
-                return correccion
-
-        # CASO 2: manual_tarifario es similar a descripcion_del_cups
-        if descripcion and len(manual) > 20:
-            manual_words = set(manual.upper().split())
-            desc_words = set(descripcion.upper().split())
-            if len(manual_words) > 0 and len(desc_words) > 0:
-                similitud = len(manual_words & desc_words) / min(len(manual_words), len(desc_words))
-                if similitud > 0.5:  # Más del 50% de palabras en común
-                    if clasif_porcentaje['tipo'] == 'MANUAL':
-                        correccion['necesita_correccion'] = True
-                        correccion['nuevo_manual'] = porcentaje
-                        correccion['nuevo_porcentaje'] = '0'
-                        correccion['razon'] = f"manual_tarifario similar a descripción ({similitud:.0%})"
-                        correccion['confianza'] = similitud
-                        return correccion
-
-        # CASO 3: manual_tarifario tiene formato de tarifa (número grande)
-        try:
-            valor_manual = float(manual.replace(',', '.').replace('$', '').strip())
-            if valor_manual > 1000:  # Parece una tarifa, no un manual
-                if clasif_porcentaje['tipo'] == 'MANUAL':
-                    correccion['necesita_correccion'] = True
-                    correccion['nuevo_manual'] = porcentaje
-                    correccion['nuevo_porcentaje'] = '0'
-                    correccion['razon'] = f"manual_tarifario contiene tarifa ({valor_manual:,.0f})"
-                    correccion['confianza'] = 0.9
-                    return correccion
-        except:
-            pass
-
-        return correccion
-
-    def _extraer_porcentaje(self, texto: str) -> Optional[float]:
-        """Extrae porcentaje de forma inteligente."""
-        if pd.isna(texto) or str(texto).strip() == '':
-            return None
-
-        texto = str(texto).strip()
-        texto_upper = texto.upper()
-
-        if 'PLENA' in texto_upper or 'PLENO' in texto_upper:
-            if not re.search(r'[+-]\s*\d+', texto_upper):
-                return 0.0
-
-        texto_sin_pct = texto.replace('%', '')
-
-        match = self.PATRON_PORCENTAJE_FINAL.search(texto_sin_pct)
-        if match:
-            try:
-                valor = float(match.group(1).replace(',', '.'))
-                if '-' in texto_sin_pct:
-                    valor = -abs(valor)
-                if -100 <= valor <= 200:
-                    return valor
-            except:
-                pass
-
-        match = self.PATRON_MENOS.search(texto_sin_pct)
-        if match:
-            try:
-                return -float(match.group(1).replace(',', '.'))
-            except:
-                pass
-
-        match = self.PATRON_MAS.search(texto_sin_pct)
-        if match:
-            try:
-                return float(match.group(1).replace(',', '.'))
-            except:
-                pass
-
-        match = self.PATRON_DECIMAL.match(texto_sin_pct.strip())
-        if match:
-            try:
-                return round(float(match.group(1)) * 100, 2)
-            except:
-                pass
-
-        numeros = self.PATRON_NUMERO.findall(texto_sin_pct)
-        for num_str in reversed(numeros):
-            try:
-                num = float(num_str.replace(',', '.'))
-                if str(int(abs(num))) in self.ANOS_IGNORAR:
-                    continue
-                if num > 1000:
-                    continue
-                if -100 <= num <= 200:
-                    if 'MENOS' in texto_upper or f'-{num_str}' in texto:
-                        num = -abs(num)
-                    return num
-            except:
-                continue
-
-        return None
-
-    def _normalizar_manual(self, texto: str) -> str:
-        """Normaliza el manual tarifario."""
-        if pd.isna(texto) or str(texto).strip() == '':
-            return 'PROPIO'
-
-        texto = str(texto).strip()
-        texto_upper = texto.upper()
-
-        # PROPIO
-        if re.search(r'\bPROPIA?S?\b|INSTITUCIONAL|TARIA\s*PROPIA', texto_upper):
-            return 'PROPIO'
-
-        # ISS
-        if re.search(r'\bISS\b', texto_upper) and not re.search(r'\bSOAT\b', texto_upper):
-            return 'ISS'
-
-        # SOAT
-        if re.search(r'\bSOAT\b|\bUVT\b|\bUVB\b|DECRETO\s*2423|DECRETO\s*2644', texto_upper):
-            return 'SOAT'
-
-        # Números puros -> PROPIO
-        if re.match(r'^[\d,\.\s]+$', texto):
-            return 'PROPIO'
-
-        return texto
-
-    def _procesar_fila(self, row: pd.Series) -> Dict[str, Any]:
-        """
-        Procesa una fila completa con detección ML.
-        """
-        resultado = {
-            'manual_tarifario': '',
-            'porcentaje_manual_tarifario': 0.0,
-            'correccion_aplicada': False,
-            'log': None
-        }
-
-        # 1. Detectar anomalías
-        correccion = self._detectar_y_corregir_anomalia(row)
-
-        if correccion['necesita_correccion']:
-            # Usar valores corregidos
-            manual_raw = correccion['nuevo_manual']
-            porcentaje_raw = correccion['nuevo_porcentaje']
-            resultado['correccion_aplicada'] = True
-            resultado['log'] = correccion['razon']
-        else:
-            manual_raw = str(row.get('manual_tarifario', '')).strip()
-            porcentaje_raw = str(row.get('porcentaje_manual_tarifario', '')).strip()
-
-        # 2. Normalizar manual
-        resultado['manual_tarifario'] = self._normalizar_manual(manual_raw)
-
-        # 3. Extraer porcentaje
-        tarifa = row.get('tarifa_unitaria_en_pesos', '0')
-        try:
-            tarifa_num = float(str(tarifa).replace(',', '.'))
-        except:
-            tarifa_num = 0
-
-        # Si porcentaje es texto de manual o propio -> 0
-        porcentaje_upper = porcentaje_raw.upper()
-        if any(p in porcentaje_upper for p in ['PROPIO', 'PROPIA', 'INSTITUCIONAL', 'PLENA', 'PLENO']):
-            resultado['porcentaje_manual_tarifario'] = 0.0
-        else:
-            # Extraer porcentaje
-            pct = self._extraer_porcentaje(porcentaje_raw)
-            if pct is not None:
-                # Verificar que no sea igual a la tarifa
-                if tarifa_num > 0 and abs(pct - tarifa_num) < 1:
-                    resultado['porcentaje_manual_tarifario'] = 0.0
-                elif pct > 1000:  # Probable tarifa duplicada
-                    resultado['porcentaje_manual_tarifario'] = 0.0
-                else:
-                    resultado['porcentaje_manual_tarifario'] = round(pct, 2)
-            else:
-                resultado['porcentaje_manual_tarifario'] = 0.0
-
-        return resultado
-
-    def procesar_dataframe(self, df: pd.DataFrame, nombre: str = "Datos") -> pd.DataFrame:
-        """Procesa un DataFrame completo."""
-        print(f"\n{'═'*70}")
-        print(f"🧠 PROCESANDO CON ML: {nombre}")
-        print(f"{'═'*70}")
-
-        inicio = datetime.now()
-        total = len(df)
-        print(f"📊 Total registros: {total:,}")
-
-        # Normalizar columnas
-        df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
-
-        # Asegurar columnas
-        for col in ['manual_tarifario', 'porcentaje_manual_tarifario', 'tarifa_unitaria_en_pesos']:
-            if col not in df.columns:
-                df[col] = ''
-
-        # Procesar
-        print(f"\n🔄 Fase 1: Detección de anomalías con ML...")
-
-        nuevos_manuales = []
-        nuevos_porcentajes = []
-        correcciones = []
-
-        for idx in tqdm(range(total), desc="   Procesando"):
-            row = df.iloc[idx]
-            resultado = self._procesar_fila(row)
-
-            nuevos_manuales.append(resultado['manual_tarifario'])
-            nuevos_porcentajes.append(resultado['porcentaje_manual_tarifario'])
-
-            if resultado['correccion_aplicada']:
-                correcciones.append({
-                    'indice': idx,
-                    'original_manual': row.get('manual_tarifario', ''),
-                    'original_porcentaje': row.get('porcentaje_manual_tarifario', ''),
-                    'nuevo_manual': resultado['manual_tarifario'],
-                    'log': resultado['log']
-                })
-
-        df['manual_tarifario'] = nuevos_manuales
-        df['porcentaje_manual_tarifario'] = nuevos_porcentajes
-
-        # Corregir tarifas
-        print(f"\n🔄 Fase 2: Corrigiendo tarifas...")
-        tarifa = pd.to_numeric(
-            df['tarifa_unitaria_en_pesos'].astype(str).str.replace(',', '.'),
-            errors='coerce'
-        ).fillna(0)
-        mask_pequena = (tarifa > 0) & (tarifa < 100)
-        tarifa.loc[mask_pequena] = tarifa.loc[mask_pequena] * 1000
-        df['tarifa_unitaria_en_pesos'] = tarifa.round(2)
-
-        # Estadísticas
-        duracion = (datetime.now() - inicio).total_seconds()
-
-        print(f"\n{'─'*70}")
-        print(f"📈 RESULTADOS - {nombre}")
-        print(f"{'─'*70}")
-        print(f"⏱️ Tiempo: {duracion:.1f} segundos")
-        print(f"🔧 Correcciones ML aplicadas: {len(correcciones):,}")
-
-        if correcciones:
-            print(f"\n📝 Muestra de correcciones aplicadas:")
-            for c in correcciones[:10]:
-                print(f"   • Fila {c['indice']}: {c['log']}")
-                print(f"     Original: '{str(c['original_manual'])[:40]}...'")
-                print(f"     Corregido: '{c['nuevo_manual']}'")
-
-        print(f"\n📊 Distribución de Manuales:")
-        for manual, count in df['manual_tarifario'].value_counts().head(10).items():
-            pct = count / total * 100
-            print(f"   {manual:15} │ {count:>10,} │ {pct:5.1f}%")
-
-        self.stats['total_registros'] += total
-        self.stats['columnas_intercambiadas'] += len(correcciones)
-        self.stats['correcciones_ml'].extend(correcciones)
-
-        gc.collect()
-        return df
-
-    def ejecutar(self, contenido: bytes, nombre: str) -> Dict[str, pd.DataFrame]:
-        """Ejecuta el ETL completo."""
-        print("\n" + "═"*70)
-        print("🚀 ETL CONSOLIDADO T25 - ML EDITION")
-        print("═"*70)
-        print(f"📁 Archivo: {nombre}")
-        print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-        inicio = datetime.now()
-
-        # Cargar archivo
-        dataframes = self._cargar_archivo(contenido, nombre)
-
-        # Procesar cada hoja
-        for nombre_hoja, df in dataframes.items():
-            self.resultados[nombre_hoja] = self.procesar_dataframe(df, nombre_hoja)
-
-        duracion = (datetime.now() - inicio).total_seconds()
-
-        print("\n" + "═"*70)
-        print("✅ ETL ML COMPLETADO")
-        print("═"*70)
-        print(f"📊 Total registros: {self.stats['total_registros']:,}")
-        print(f"🔧 Correcciones ML: {self.stats['columnas_intercambiadas']:,}")
-        print(f"⏱️ Tiempo: {duracion:.1f} segundos")
-
-        return self.resultados
-
-    def _cargar_archivo(self, contenido: bytes, nombre: str) -> Dict[str, pd.DataFrame]:
-        """Carga archivo Excel o CSV."""
-        dataframes = {}
-
-        if nombre.endswith('.csv'):
-            resultado = chardet.detect(contenido[:10000])
-            encoding = resultado['encoding'] or 'utf-8'
-
-            for sep in [';', ',', '\t']:
-                try:
-                    df = pd.read_csv(io.BytesIO(contenido), sep=sep, encoding=encoding,
-                                    dtype=str, low_memory=False)
-                    if len(df.columns) > 1:
-                        dataframes['Datos'] = df
-                        break
-                except:
-                    continue
-        else:
-            excel = pd.ExcelFile(io.BytesIO(contenido))
-            for hoja in excel.sheet_names:
-                df = pd.read_excel(excel, sheet_name=hoja, dtype=str)
-                if len(df) > 0:
-                    dataframes[hoja] = df
-
-        return dataframes
-
-    def exportar_log_correcciones(self, archivo: str = 'correcciones_ml.csv'):
-        """Exporta log de correcciones ML."""
-        if self.stats['correcciones_ml']:
-            df_log = pd.DataFrame(self.stats['correcciones_ml'])
-            df_log.to_csv(archivo, index=False, encoding='utf-8-sig')
-            print(f"✅ Log exportado: {archivo}")
-            return df_log
-        else:
-            print("ℹ️ No hay correcciones ML para exportar")
-            return None
-
-print("✅ Clase ETLConsolidadoT25_ML definida")
-
-#@title 4.2 Ejecutar ETL con Machine Learning { display-mode: "form" }
-#@markdown ### ⚙️ **Procesa el archivo con detección inteligente de anomalías**
-
-if 'contenido_archivo' not in dir() or contenido_archivo is None:
-    print("❌ ERROR: No hay archivo para procesar")
-    print("   Verifica que el consolidador haya generado el archivo CONSOLIDADO")
-else:
-    # Crear ETL con clasificador ML
-    etl_ml = ETLConsolidadoT25_ML(
-        clasificador=clasificador_ml,
-        chunk_size=50000
-    )
-
-    # Ejecutar
-    dataframes_limpios = etl_ml.ejecutar(contenido_archivo, nombre_archivo)
-
-    print("\n📦 DataFrames disponibles en: dataframes_limpios")
-
-#@title 5.1 Ver Correcciones ML Aplicadas { display-mode: "form" }
-#@markdown ### 🔧 **Muestra las correcciones detectadas por ML**
-
-if 'etl_ml' not in dir():
-    print("❌ ERROR: Primero ejecuta el ETL")
-else:
-    correcciones = etl_ml.stats['correcciones_ml']
-
-    print("="*70)
-    print("🔧 CORRECCIONES ML APLICADAS")
-    print("="*70)
-    print(f"\n📊 Total correcciones: {len(correcciones):,}")
-
-    if correcciones:
-        print(f"\n📝 Detalle de correcciones:")
-        print("─"*70)
-
-        for i, c in enumerate(correcciones[:50]):
-            print(f"\n[{i+1}] Fila {c['indice']}")
-            print(f"    📌 Razón: {c['log']}")
-            print(f"    ❌ Original manual: {str(c['original_manual'])[:60]}")
-            print(f"    ❌ Original %: {str(c['original_porcentaje'])[:40]}")
-            print(f"    ✅ Nuevo manual: {c['nuevo_manual']}")
-
-        if len(correcciones) > 50:
-            print(f"\n... y {len(correcciones) - 50} correcciones más")
-    else:
-        print("\n✅ No se detectaron anomalías que requieran corrección ML")
-
-#@title 5.2 Ver Resumen de Resultados { display-mode: "form" }
-
-if 'dataframes_limpios' not in dir():
-    print("❌ ERROR: Primero ejecuta el ETL")
-else:
-    print("="*70)
-    print("📊 RESUMEN DE RESULTADOS")
-    print("="*70)
-
-    for nombre, df in dataframes_limpios.items():
-        print(f"\n{'─'*70}")
-        print(f"📑 {nombre}: {len(df):,} registros")
-        print(f"{'─'*70}")
-
-        print(f"\n📋 Manuales Tarifarios:")
-        for val, count in df['manual_tarifario'].value_counts().items():
-            pct = count / len(df) * 100
-            barra = '█' * int(pct / 2)
-            print(f"   {val:15} │ {count:>10,} │ {pct:5.1f}% │ {barra}")
-
-        print(f"\n📊 Top 10 Porcentajes:")
-        for val, count in df['porcentaje_manual_tarifario'].value_counts().head(10).items():
-            print(f"   {str(val):>10}% : {count:>10,}")
-
-#@title 5.3 Ver Muestra de Datos { display-mode: "form" }
-
-#@markdown Filas a mostrar:
-n_filas = 25 #@param {type:"slider", min:5, max:100, step:5}
-
-if 'dataframes_limpios' not in dir():
-    print("❌ ERROR: Primero ejecuta el ETL")
-else:
-    for nombre, df in dataframes_limpios.items():
-        print(f"\n{'═'*70}")
-        print(f"📑 MUESTRA: {nombre}")
-        print(f"{'═'*70}")
-
-        cols = ['codigo_cups', 'descripcion_del_cups', 'tarifa_unitaria_en_pesos',
-                'manual_tarifario', 'porcentaje_manual_tarifario', 'contrato']
-        cols_disp = [c for c in cols if c in df.columns]
-
-        print(df[cols_disp].head(n_filas))
-
-#@title 6.1 Exportar a Excel { display-mode: "form" }
-
-if 'dataframes_limpios' not in dir():
-    print("❌ ERROR: Primero ejecuta el ETL")
-else:
-    print("="*70)
-    print("💾 EXPORTANDO A EXCEL")
-    print("="*70)
-
-    # Generar nombre legible para el archivo limpio
-    ts_limpio = datetime.now().strftime('%Y-%m-%d_%H-%M')
-    archivo_excel = f"Consolidado_Limpio_{ts_limpio}.xlsx"
-
-    print(f"\n📝 Generando: {archivo_excel}")
-
-    with pd.ExcelWriter(archivo_excel, engine='xlsxwriter') as writer:
-        workbook = writer.book
-
-        fmt_header = workbook.add_format({
-            'bold': True, 'bg_color': '#6A1B9A', 'font_color': 'white',
-            'align': 'center', 'border': 1
-        })
-        fmt_moneda = workbook.add_format({'num_format': '$#,##0.00'})
-
-        for nombre_hoja, df in tqdm(dataframes_limpios.items(), desc="Exportando"):
-            hoja = nombre_hoja[:31]
-            df.to_excel(writer, sheet_name=hoja, index=False, startrow=1, header=False)
-
-            ws = writer.sheets[hoja]
-            for col, column in enumerate(df.columns):
-                ws.write(0, col, column, fmt_header)
-                if column == 'tarifa_unitaria_en_pesos':
-                    ws.set_column(col, col, 20, fmt_moneda)
-                else:
-                    ws.set_column(col, col, 15)
-
-            ws.freeze_panes(1, 0)
-            ws.autofilter(0, 0, len(df), len(df.columns) - 1)
-
-    print(f"\n✅ Excel generado: {archivo_excel}")
-
-# ══════════════════════════════════════════════════════════════════════════════
-# DESCARGA DE TODOS LOS ARCHIVOS (CONSOLIDADOR + ETL)
-# ══════════════════════════════════════════════════════════════════════════════
-
-LOG.header("DESCARGA DE ARCHIVOS FINALES")
-
-# Agregar archivos del ETL a la lista de archivos generados
-if 'archivo_excel' in dir() and os.path.exists(archivo_excel):
-    archivos_generados.append(archivo_excel)
-
-if os.path.exists('correcciones_ml.csv'):
-    archivos_generados.append('correcciones_ml.csv')
-
-# Descargar todos los archivos
-if archivos_generados:
-    LOG.indent()
-    print(f"\n📦 Total de archivos a descargar: {len(archivos_generados)}")
-    for archivo in archivos_generados:
-        if os.path.exists(archivo):
-            size_kb = os.path.getsize(archivo) / 1024
-            LOG.download(archivo, f"{size_kb:.1f} KB")
-            print(f"📥 Archivo generado: {archivo}")
-    LOG.dedent()
-
-    LOG.success("Descarga completada")
-else:
-    LOG.warning("No hay archivos para descargar")
 
 # Cerrar conexión SFTP
 try:
