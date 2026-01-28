@@ -2877,6 +2877,11 @@ def es_dato_de_sede(fila: list) -> bool:
     """Detecta si una fila contiene DATOS de sede."""
     if not fila or len(fila) < 3:
         return False
+    
+    # DEBUG: Imprimir fila para ver qué está evaluando
+    fila_str = str([str(x).strip() for x in fila[:5] if x])
+    # print(f"    🔎 Evaluando si es sede: {fila_str}")
+
 
     col0 = str(fila[0]).upper().strip() if fila[0] is not None else ''
     col1 = str(fila[1]).upper().strip() if len(fila) > 1 and fila[1] is not None else ''
@@ -2884,19 +2889,36 @@ def es_dato_de_sede(fila: list) -> bool:
     es_depto = col0 in DEPARTAMENTOS_COLOMBIA or any(d in col0 for d in DEPARTAMENTOS_COLOMBIA)
     es_muni = col1 in MUNICIPIOS_COLOMBIA or any(m in col1 for m in MUNICIPIOS_COLOMBIA)
 
+    # Validar por ubicación geográfica
     if es_depto and es_muni:
         return True
 
-    for celda in fila[:8]:
-        if celda:
-            celda_str = str(celda).upper()
-            for patron in PATRONES_DIRECCION:
-                if patron in celda_str:
-                    for otra in fila[:8]:
-                        if otra:
-                            otra_str = str(otra).strip().replace('.0', '').replace('-', '')
-                            if otra_str.isdigit() and 8 <= len(otra_str) <= 12:
-                                return True
+    # 🆕 v15.X: Validación relajada
+    tiene_direccion = False
+    tiene_codigo_hab = False
+
+    for item in fila[:8]:
+        if not item: continue
+        item_str = str(item).upper().strip()
+        
+        # Chequear dirección
+        for patron in PATRONES_DIRECCION:
+            if patron in item_str:
+                tiene_direccion = True
+                break
+        
+        # Chequear código habilitación (8-12 dígitos)
+        clean_code = item_str.replace('.0', '').replace('-', '')
+        if clean_code.isdigit() and 8 <= len(clean_code) <= 12:
+            tiene_codigo_hab = True
+
+    # Si tiene código de habilitación, es suficiente para considerarla sede
+    if tiene_codigo_hab:
+        return True
+
+    # Si tiene dirección explícita, también (aunque no tenga código, puede ser un error de digitación)
+    if tiene_direccion:
+        return True
 
     return False
 
