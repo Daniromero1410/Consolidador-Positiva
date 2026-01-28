@@ -4132,6 +4132,7 @@ class ProcesadorAnexo:
                     continue
 
                 if es_encabezado_seccion_sedes(fila):
+                    print(f"  🔍 SEDES: Detectado bloque de sedes en fila {i+1}")
                     self.log.debug(f"Fila {i+1}: Encabezado de SEDES detectado")
                     encontro_sedes = True
                     estado = 'en_sedes'
@@ -4150,6 +4151,7 @@ class ProcesadorAnexo:
 
                     nuevas_sedes = self.extraer_sedes_de_bloque(datos, i + 1, idx_hab, idx_sede)
                     if nuevas_sedes:
+                        print(f"    👉 Sedes encontradas en bloque: {[s['sede'] for s in nuevas_sedes]}")
                         # 🆕 Guardar sedes pendientes para el próximo bloque de servicios
                         sedes_pendientes = nuevas_sedes
                         self.log.debug(f"  Sedes detectadas: {len(sedes_pendientes)}, esperando encabezado de servicios")
@@ -4158,6 +4160,7 @@ class ProcesadorAnexo:
                     continue
 
                 if es_encabezado_seccion_servicios(fila):
+                    print(f"  🔍 SERVICIOS: Detectado bloque de servicios en fila {i+1}")
                     self.log.debug(f"Fila {i+1}: Encabezado de SERVICIOS detectado")
                     idx_columnas = self.detectar_columnas(fila)
                     encontro_encabezado_servicios = True
@@ -4167,6 +4170,7 @@ class ProcesadorAnexo:
                     if sedes_pendientes:
                         sedes_activas = sedes_pendientes
                         sedes_pendientes = []
+                        print(f"    👉 Activando sedes para este bloque: {[s['sede'] for s in sedes_activas]}")
                         self.log.debug(f"  Sedes activadas para este bloque: {len(sedes_activas)}")
                         for sede in sedes_activas:
                             self.log.debug(f"    - Sede {sede['sede']}: {sede['codigo']}")
@@ -4204,16 +4208,19 @@ class ProcesadorAnexo:
                             descripcion = get_valor('descripcion')
 
                             if not validar_tarifa(tarifa):
+                                print(f"    ❌ RECHAZADO (Tarifa inválida) Fila {i+1}: {tarifa}")
                                 self.log.debug(f"Fila {i+1}: Tarifa rechazada (parece teléfono)")
                                 i += 1
                                 continue
 
                             if not validar_manual_tarifario(manual):
+                                print(f"    ❌ RECHAZADO (Manual inválido) Fila {i+1}: {manual}")
                                 self.log.debug(f"Fila {i+1}: Manual rechazado (parece dirección)")
                                 i += 1
                                 continue
 
                             if not validar_descripcion(descripcion):
+                                print(f"    ❌ RECHAZADO (Descripción inválida) Fila {i+1}: {descripcion}")
                                 self.log.debug(f"Fila {i+1}: Descripción rechazada (es número de sede)")
                                 i += 1
                                 continue
@@ -4232,6 +4239,10 @@ class ProcesadorAnexo:
                                 s = base.copy()
                                 s['codigo_de_habilitacion'] = formatear_habilitacion(sede['codigo'], sede['sede'])
                                 servicios.append(s)
+                        else:
+                            # Debug por qué falló validar_cups
+                            if cups:
+                                pass # print(f"    ⚠️ CUPS inválido o fila rechazada por validador: {cups} en fila {i+1}")
 
                 i += 1
 
