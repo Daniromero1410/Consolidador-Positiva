@@ -4573,8 +4573,16 @@ else:
     # consolidado_total = []  <-- ELIMINADO PARA AHORRAR MEMORIA
     
     # 🆕 v15.1: BATCH PROCESSING PARA EVITAR OOM
-    BATCH_SIZE = 5000
+    BATCH_SIZE = 500  # Reducido a 500 (Ultra-conservative mode)
     batch_buffer = []
+    
+    # 🆕 v15.2: Flushing de alertas
+    ALERT_BATCH_SIZE = 2000
+    temp_alertas_file = f"temp_alertas_{int(time.time())}.csv"
+    alertas_header_written = False
+    
+    import gc # Asegurar importación
+
     temp_csv_file = f"temp_consolidado_{int(time.time())}.csv"
     csv_headers_written = False
     total_registros_procesados = 0
@@ -4595,11 +4603,26 @@ else:
             header = es_primer_batch
             
             df_batch.to_csv(archivo_csv, mode=modo, header=header, index=False, encoding='utf-8-sig')
-            return True, len(df_batch)
+            
+            # Limpieza agresiva de memoria
+            del df_batch
+            gc.collect()
+            
+            return True, len(buffer)
         except Exception as e:
             LOG.error(f"Error guardando batch: {e}")
             return False, 0
-    todas_alertas = []
+    def guardar_alertas_batch(alertas_lista, archivo_csv, es_primer_batch):
+        if not alertas_lista: return
+        try:
+            df_a = pd.DataFrame(alertas_lista)
+            modo = 'w' if es_primer_batch else 'a'
+            header = es_primer_batch
+            df_a.to_csv(archivo_csv, mode=modo, header=header, index=False, encoding='utf-8-sig')
+        except Exception as e:
+            LOG.error(f"Error guardando batch de alertas: {e}")
+
+    todas_alertas = [] # Se usará como buffer ahora
     alertas_set = set()
     resumen_contratos = []
     archivos_no_positiva = []
@@ -4804,6 +4827,13 @@ else:
         for alerta in buscador.alertas:
             agregar_alerta_unica(alerta.to_dict())
 
+        # Flush alertas si es necesario
+        if len(todas_alertas) >= ALERT_BATCH_SIZE:
+             guardar_alertas_batch(todas_alertas, temp_alertas_file, not alertas_header_written)
+             alertas_header_written = True
+             todas_alertas = []
+             gc.collect()
+
         if not res['exito']:
             resumen_contratos.append({
                 'contrato': id_c, 'exito': 'NO', 'registros': 0,
@@ -4879,6 +4909,12 @@ else:
         for alerta in procesador.alertas:
             agregar_alerta_unica(alerta.to_dict())
 
+        # Flush alertas si es necesario
+        if len(todas_alertas) >= ALERT_BATCH_SIZE:
+             guardar_alertas_batch(todas_alertas, temp_alertas_file, not alertas_header_written)
+             alertas_header_written = True
+             todas_alertas = []
+
         exito = regs > 0
         resumen_contratos.append({
             'contrato': id_c,
@@ -4910,7 +4946,13 @@ else:
 
     print(f"\n📊 RESUMEN DE PROCESAMIENTO:")
     print(f"   • Registros consolidados: {total_registros_procesados:,}")
-    print(f"   • Alertas generadas: {len(todas_alertas)} (sin duplicados)")
+
+    # Flush final de alertas
+    if todas_alertas:
+         guardar_alertas_batch(todas_alertas, temp_alertas_file, not alertas_header_written)
+         alertas_header_written = True
+         todas_alertas = []
+    print(f"   • Alertas generadas: {len(alertas_set)} (unicas)")
     print(f"   • Archivos sin formato POSITIVA: {len(archivos_no_positiva)}")
     print(f"   • Contratos sin fecha en maestra: {len(contratos_sin_fecha)}")
     print(f"   • Fechas encontradas: {fechas_ok} | No encontradas: {fechas_no}")
@@ -4988,6 +5030,15 @@ if df_consolidado is not None and not df_consolidado.empty:
             LOG.error(f"Error exportando CSV: {str(e2)}")
 
 # 🆕 v14.1: ALERTAS SEPARADAS POR HOJAS
+# 🆕 v14.1: ALERTAS SEPARADAS POR HOJAS
+# Cargar alertas desde CSV temporal si existe
+if os.path.exists(temp_alertas_file):
+    try:
+        df_alertas_full = pd.read_csv(temp_alertas_file, dtype=str)
+        todas_alertas = df_alertas_full.to_dict('records') # Convertir para el proceso de separación
+    except:
+        pass
+
 if todas_alertas:
     nombre_alertas = f"Alertas_{ts}.xlsx"
 
