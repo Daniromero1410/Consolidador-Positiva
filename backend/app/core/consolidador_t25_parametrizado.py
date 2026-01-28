@@ -2002,6 +2002,153 @@ class ETLConsolidadoT25_ML:
 
         return resultado
 
+    def procesar_dataframe(self, df: pd.DataFrame, nombre: str = "Datos") -> pd.DataFrame:
+        """Procesa un DataFrame completo."""
+        print(f"\n{'═'*70}")
+        print(f"🧠 PROCESANDO CON ML: {nombre}")
+        print(f"{'═'*70}")
+
+        inicio = datetime.now()
+        total = len(df)
+        print(f"📊 Total registros: {total:,}")
+
+        # Normalizar columnas
+        df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
+
+        # Asegurar columnas
+        for col in ['manual_tarifario', 'porcentaje_manual_tarifario', 'tarifa_unitaria_en_pesos']:
+            if col not in df.columns:
+                df[col] = ''
+
+        # Procesar
+        print(f"\n🔄 Fase 1: Detección de anomalías con ML...")
+
+        nuevos_manuales = []
+        nuevos_porcentajes = []
+        correcciones = []
+
+        for idx in tqdm(range(total), desc="   Procesando"):
+            row = df.iloc[idx]
+            resultado = self._procesar_fila(row)
+
+            nuevos_manuales.append(resultado['manual_tarifario'])
+            nuevos_porcentajes.append(resultado['porcentaje_manual_tarifario'])
+
+            if resultado['correccion_aplicada']:
+                correcciones.append({
+                    'indice': idx,
+                    'original_manual': row.get('manual_tarifario', ''),
+                    'original_porcentaje': row.get('porcentaje_manual_tarifario', ''),
+                    'nuevo_manual': resultado['manual_tarifario'],
+                    'log': resultado['log']
+                })
+
+        df['manual_tarifario'] = nuevos_manuales
+        df['porcentaje_manual_tarifario'] = nuevos_porcentajes
+
+        # Corregir tarifas
+        print(f"\n🔄 Fase 2: Corrigiendo tarifas...")
+        tarifa = pd.to_numeric(
+            df['tarifa_unitaria_en_pesos'].astype(str).str.replace(',', '.'),
+            errors='coerce'
+        ).fillna(0)
+        mask_pequena = (tarifa > 0) & (tarifa < 100)
+        tarifa.loc[mask_pequena] = tarifa.loc[mask_pequena] * 1000
+        df['tarifa_unitaria_en_pesos'] = tarifa.round(2)
+
+        # Estadísticas
+        duracion = (datetime.now() - inicio).total_seconds()
+
+        print(f"\n{'─'*70}")
+        print(f"📈 RESULTADOS - {nombre}")
+        print(f"{'─'*70}")
+        print(f"⏱️ Tiempo: {duracion:.1f} segundos")
+        print(f"🔧 Correcciones ML aplicadas: {len(correcciones):,}")
+
+        if correcciones:
+            print(f"\n📝 Muestra de correcciones aplicadas:")
+            for c in correcciones[:10]:
+                print(f"   • Fila {c['indice']}: {c['log']}")
+                print(f"     Original: '{str(c['original_manual'])[:40]}...'")
+                print(f"     Corregido: '{c['nuevo_manual']}'")
+
+        print(f"\n📊 Distribución de Manuales:")
+        for manual, count in df['manual_tarifario'].value_counts().head(10).items():
+            pct = count / total * 100
+            print(f"   {manual:15} │ {count:>10,} │ {pct:5.1f}%")
+
+        self.stats['total_registros'] += total
+        self.stats['columnas_intercambiadas'] += len(correcciones)
+        self.stats['correcciones_ml'].extend(correcciones)
+
+        gc.collect()
+        return df
+
+    def ejecutar(self, contenido: bytes, nombre: str) -> Dict[str, pd.DataFrame]:
+        """Ejecuta el ETL completo."""
+        print("\n" + "═"*70)
+        print("🚀 ETL CONSOLIDADO T25 - ML EDITION")
+        print("═"*70)
+        print(f"📁 Archivo: {nombre}")
+        print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+        inicio = datetime.now()
+
+        # Cargar archivo
+        dataframes = self._cargar_archivo(contenido, nombre)
+
+        # Procesar cada hoja
+        for nombre_hoja, df in dataframes.items():
+            self.resultados[nombre_hoja] = self.procesar_dataframe(df, nombre_hoja)
+
+        duracion = (datetime.now() - inicio).total_seconds()
+
+        print("\n" + "═"*70)
+        print("✅ ETL ML COMPLETADO")
+        print("═"*70)
+        print(f"📊 Total registros: {self.stats['total_registros']:,}")
+        print(f"🔧 Correcciones ML: {self.stats['columnas_intercambiadas']:,}")
+        print(f"⏱️ Tiempo: {duracion:.1f} segundos")
+
+        return self.resultados
+
+    def _cargar_archivo(self, contenido: bytes, nombre: str) -> Dict[str, pd.DataFrame]:
+        """Carga archivo Excel o CSV."""
+        dataframes = {}
+
+        if nombre.endswith('.csv'):
+            resultado = chardet.detect(contenido[:10000])
+            encoding = resultado['encoding'] or 'utf-8'
+
+            for sep in [';', ',', '\t']:
+                try:
+                    df = pd.read_csv(io.BytesIO(contenido), sep=sep, encoding=encoding,
+                                    dtype=str, low_memory=False)
+                    if len(df.columns) > 1:
+                        dataframes['Datos'] = df
+                        break
+                except:
+                    continue
+        else:
+            excel = pd.ExcelFile(io.BytesIO(contenido))
+            for hoja in excel.sheet_names:
+                df = pd.read_excel(excel, sheet_name=hoja, dtype=str)
+                if len(df) > 0:
+                    dataframes[hoja] = df
+
+        return dataframes
+
+    def exportar_log_correcciones(self, archivo: str = 'correcciones_ml.csv'):
+        """Exporta log de correcciones ML."""
+        if self.stats['correcciones_ml']:
+            df_log = pd.DataFrame(self.stats['correcciones_ml'])
+            df_log.to_csv(archivo, index=False, encoding='utf-8-sig')
+            print(f"✅ Log exportado: {archivo}")
+            return df_log
+        else:
+            print("ℹ️ No hay correcciones ML para exportar")
+            return None
+
 # Crear instancia global
 try:
     clasificador_ml = ClasificadorTextoMedico()
