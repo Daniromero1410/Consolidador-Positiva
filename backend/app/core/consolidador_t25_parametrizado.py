@@ -2499,24 +2499,35 @@ def limpiar_codigo(valor) -> Optional[str]:
         texto = texto[:-2]
     return None if not texto or texto.lower() in ('none', 'nan', '') else texto
 
-def limpiar_tarifa(valor) -> Optional[float]:
-    """Convierte tarifa a número."""
+def limpiar_tarifa(valor) -> Optional[object]:
+    """Convierte tarifa a número (int si no tiene decimales)."""
     if valor is None:
         return None
     try:
         if isinstance(valor, (int, float)):
-            return float(valor) if not pd.isna(valor) else None
+            if pd.isna(valor): return None
+            val = float(valor)
+            return int(val) if val.is_integer() else val
+            
         texto = str(valor).replace('$', '').replace(',', '').replace(' ', '').strip()
-        return float(texto) if texto and texto.lower() not in ('none', 'nan') else None
+        if not texto: return None
+        val = float(texto)
+        return int(val) if val.is_integer() else val
     except:
         return None
 
 def limpiar_texto(valor) -> Optional[str]:
-    """Limpia texto eliminando espacios extras."""
+    """Limpia texto eliminando espacios extras y sufijos .0"""
     if valor is None:
         return None
     texto = str(valor).strip()
-    return None if not texto or texto.lower() in ('none', 'nan') else texto
+    if not texto or texto.lower() in ('none', 'nan'):
+        return None
+    
+    if texto.endswith('.0'):
+        texto = texto[:-2]
+        
+    return texto
 
 def formatear_habilitacion(codigo, sede) -> str:
     """Formatea código de habilitación con sede."""
