@@ -40,7 +40,7 @@ import paramiko
 from dataclasses import dataclass, field
 
 # Machine Learning
-# Machine Learning (solo si está habilitado)
+# Machine Learning
 try:
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.metrics.pairwise import cosine_similarity
@@ -2156,25 +2156,15 @@ class ETLConsolidadoT25_ML:
             return None
 
 # Crear instancia global
-# Crear instancia global
-# 🆕 v15.2: Soporte para Modo Lite (Sin ML) para entornos con poca RAM
-ENABLE_ML = os.environ.get('ENABLE_ML', 'False').lower() == 'true'
-
-if ENABLE_ML:
-    try:
-        if TfidfVectorizer is None:
-            raise ImportError("scikit-learn no está instalado")
-            
-        print("🤖 Inicializando Machine Learning...")
-        clasificador_ml = ClasificadorTextoMedico()
-        etl_ml_helper = ETLConsolidadoT25_ML(clasificador_ml)
-    except Exception as e:
-        print(f"⚠️ Error inicializando ML (se usará modo básico): {e}")
-        clasificador_ml = None
-        etl_ml_helper = None
-else:
-    print("⚡ MODO LITE ACTIVO: Machine Learning desactivado para ahorrar memoria")
-    print("   (Para activar, establecer variable de entorno ENABLE_ML=true)")
+try:
+    if TfidfVectorizer is None:
+        raise ImportError("scikit-learn no está instalado")
+        
+    print("🤖 Inicializando Machine Learning (Modo Robusto)...")
+    clasificador_ml = ClasificadorTextoMedico()
+    etl_ml_helper = ETLConsolidadoT25_ML(clasificador_ml)
+except Exception as e:
+    print(f"⚠️ Error inicializando Clasificador ML: {e}")
     clasificador_ml = None
     etl_ml_helper = None
 
