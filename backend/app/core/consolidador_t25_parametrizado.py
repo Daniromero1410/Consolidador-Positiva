@@ -4623,6 +4623,14 @@ else:
             modo = 'w' if es_primer_batch else 'a'
             header = es_primer_batch
             
+            # Limpieza final de formatos numéricos (eliminar .0)
+            cols_limpiar = ['tarifa_unitaria_en_pesos', 'porcentaje_manual_tarifario']
+            for col in cols_limpiar:
+                if col in df_batch.columns:
+                    # Convertir a string, eliminar nulos y usar regex para quitar .0 al final
+                    df_batch[col] = df_batch[col].astype(str).replace({'nan': '', 'NaN': '', 'None': ''})
+                    df_batch[col] = df_batch[col].str.replace(r'\.0$', '', regex=True)
+
             df_batch.to_csv(archivo_csv, mode=modo, header=header, index=False, encoding='utf-8-sig')
             
             # Limpieza agresiva de memoria
