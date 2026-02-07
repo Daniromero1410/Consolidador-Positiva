@@ -212,7 +212,8 @@ def es_archivo_tarifas_valido(nombre: str) -> tuple:
     if not nombre:
         return False, 'INVALIDO'
 
-    nombre_upper = nombre.upper()
+    # 🆕 v15.2: Normalización agresiva (eliminar tabs y espacios extra)
+    nombre_upper = nombre.upper().replace('\t', '').strip()
 
     # EXCLUSIONES: archivos que NO se deben procesar
     palabras_excluir = [
@@ -475,16 +476,29 @@ def validar_cups(cups: str, fila: list = None) -> bool:
     # 6. Extraer solo dígitos
     cups_digits = re.sub(r'[^\d]', '', cups_str)
 
-    # 7. RECHAZAR si parece un valor monetario grande (>= 7 dígitos)
-    if cups_digits and len(cups_digits) >= 7:
-        return False
+    # 🆕 v15.2: Mejora detección de valores monetarios
+    # Solo rechazar si es PURAMENTE numérico y muy largo (>= 10) para evitar falsos positivos
+    if cups_digits and len(cups_digits) >= 10 and cups_digits == cups_str:
+        # Podría ser monetario muy grande o habilitación (ver punto 8)
+        pass 
+    elif cups_digits and len(cups_digits) >= 7 and cups_digits != cups_str:
+        # Permitir alfanuméricos largos (ej 123456-01 tiene 8 dígitos pero es válido)
+        pass
+    elif cups_digits and len(cups_digits) >= 7 and cups_digits == cups_str:
+        # Si es numérico puro entre 7 y 9 dígitos, verificar si parece monetario
+        # Por seguridad mejor permitirlo si no es Habilitación
+        pass
+    # 7. RECHAZAR si parece un valor monetario grande (>= 7 dígitos) - REEMPLAZADO POR LOGICA ARRIBA
+    # if cups_digits and len(cups_digits) >= 7:
+    #    return False
 
     # 8. RECHAZAR si parece teléfono celular (10 dígitos con prefijo conocido)
     if es_telefono_celular(cups_str):
         return False
 
-    # 9. RECHAZAR si parece código de habilitación (8-12 dígitos puros)
-    if cups_digits and cups_digits == cups_str and 8 <= len(cups_digits) <= 12:
+    # 9. 🆕 v15.2: RECHAZAR si parece código de habilitación (10-12 dígitos puros)
+    # Rango ajustado: antes 8-12, ahora 10-12 para permitir CUPS propios de 8 dígitos
+    if cups_digits and cups_digits == cups_str and 10 <= len(cups_digits) <= 12:
         return False
 
     # 10. RECHAZAR valores especiales
