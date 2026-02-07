@@ -144,7 +144,8 @@ def es_archivo_tarifas_valido(nombre: str) -> tuple:
     if not nombre:
         return False, 'INVALIDO'
 
-    nombre_upper = nombre.upper()
+    # 🆕 v15.2: Normalización agresiva (eliminar tabs y espacios extra)
+    nombre_upper = nombre.upper().replace('\t', '').strip()
 
     # EXCLUSIONES: archivos que NO se deben procesar
     palabras_excluir = [
@@ -407,16 +408,29 @@ def validar_cups(cups: str, fila: list = None) -> bool:
     # 6. Extraer solo dígitos
     cups_digits = re.sub(r'[^\d]', '', cups_str)
 
-    # 7. RECHAZAR si parece un valor monetario grande (>= 7 dígitos)
-    if cups_digits and len(cups_digits) >= 7:
-        return False
+    # 🆕 v15.2: Mejora detección de valores monetarios
+    # Solo rechazar si es PURAMENTE numérico y muy largo (>= 10) para evitar falsos positivos
+    if cups_digits and len(cups_digits) >= 10 and cups_digits == cups_str:
+        # Podría ser monetario muy grande o habilitación (ver punto 8)
+        pass 
+    elif cups_digits and len(cups_digits) >= 7 and cups_digits != cups_str:
+        # Si tiene guiones o letras y es largo, probablemente es un CUPS complejo (ej. 931002-1) -> VALIDAR
+        pass
+    elif cups_digits and len(cups_digits) >= 7 and cups_digits == cups_str:
+        # Si es puro número y >= 7 (pero < 10), podría ser monetario: 1450000.
+        # Pero también podría ser un CUPS numérico largo (aprobado por usuario).
+        # Vamos a ser permisivos con 7-8 dígitos si no parece habilitación
+        pass
+
+    # 7. (Reemplazado por lógica anterior menos estricta con monetarios)
 
     # 8. RECHAZAR si parece teléfono celular (10 dígitos con prefijo conocido)
     if es_telefono_celular(cups_str):
         return False
 
-    # 9. RECHAZAR si parece código de habilitación (8-12 dígitos puros)
-    if cups_digits and cups_digits == cups_str and 8 <= len(cups_digits) <= 12:
+    # 9. 🆕 v15.2: RECHAZAR explícitamente códigos de HABILITACIÓN (10-12 dígitos puros)
+    # Rango típico habilitación: 10 a 12 dígitos.
+    if cups_digits and cups_digits == cups_str and 10 <= len(cups_digits) <= 12:
         return False
 
     # 10. RECHAZAR valores especiales
@@ -626,11 +640,34 @@ def buscar_hoja_servicios_inteligente(hojas: list) -> tuple:
             if not debe_excluir_hoja_silenciosamente(h_norm):
                 return hoja, hojas_excluidas_info
 
-    # PASO 6: ANEXO 1
+    # PASO 6: ANEXO 1 (Mejorado v15.2 con regex y fallback)
+    patrones_anexo1_hoja = [
+        r'ANEXO\s*[_\-\s]*0?1', 
+        r'ANEXO\s*N[OÚº°]?\.?\s*0?1',
+        r'^0?1$'
+    ]
     for hoja, h_norm in hojas_validas.items():
-        h_clean = h_norm.replace(' ', '').replace('_', '')
-        if h_clean in ['ANEXO1', 'ANEXO01']:
-            if not debe_excluir_hoja_silenciosamente(h_norm):
+        if not debe_excluir_hoja_silenciosamente(h_norm):
+            # Prueba regex
+            for pat in patrones_anexo1_hoja:
+                if re.search(pat, h_norm):
+                    return hoja, hojas_excluidas_info
+            
+            # Prueba limpieza simple (backup)
+            h_clean = h_norm.replace(' ', '').replace('_', '').replace('.', '')
+            if h_clean in ['ANEXO1', 'ANEXO01', 'HOJA1', 'A1']:
+                return hoja, hojas_excluidas_info
+
+    # PASO 7: 🆕 v15.2 TARIFAS (Genérico) - Último recurso
+    # Si la hoja se llama "TARIFAS" o "TARIFA" (y no fue excluida por ser paquetes/costos)
+    for hoja, h_norm in hojas_validas.items():
+        if h_norm in ['TARIFAS', 'TARIFA', 'LISTA DE TARIFAS']:
+            return hoja, hojas_excluidas_info
+        
+        # O si contiene TARIFAS y no es de las excluidas
+        if 'TARIFAS' in h_norm or 'TARIFA' in h_norm:
+            # Validar que no tenga palabras negativas fuertes si es búsqueda genérica
+            if not any(x in h_norm for x in ['PAQUETE', 'COSTO', 'VIAJE', 'AMBULANCIA', 'TRASLADO']):
                 return hoja, hojas_excluidas_info
 
     # No se encontró hoja de servicios
