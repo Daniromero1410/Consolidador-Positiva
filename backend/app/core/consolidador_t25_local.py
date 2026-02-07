@@ -673,6 +673,7 @@ def buscar_hoja_servicios_inteligente(hojas: list) -> tuple:
     # No se encontró hoja de servicios
     return None, hojas_excluidas_info
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 # FUNCIÓN: generar_mensaje_hojas_disponibles
 # ══════════════════════════════════════════════════════════════════════════════
