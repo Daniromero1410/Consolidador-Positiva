@@ -3149,8 +3149,7 @@ def validar_cups(cups: str, fila: list = None) -> bool:
 
     # 6. 🆕 v14.1: RECHAZAR si parece un valor monetario grande (>= 7 dígitos)
     if cups_digits and len(cups_digits) >= 7:
-        if '-' not in cups_str:
-            return False
+        return False
 
     # 7. RECHAZAR si parece teléfono celular (10 dígitos con prefijo conocido)
     if es_telefono_celular(cups_str):
