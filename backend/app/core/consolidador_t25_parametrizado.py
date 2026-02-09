@@ -2892,26 +2892,22 @@ def es_dato_de_sede(fila: list) -> bool:
     if not fila or len(fila) < 3:
         return False
     
-    # DEBUG: Imprimir fila para ver qué está evaluando
-    fila_str = str([str(x).strip() for x in fila[:5] if x])
-    # print(f"    🔎 Evaluando si es sede: {fila_str}")
-
-
     col0 = str(fila[0]).upper().strip() if fila[0] is not None else ''
     col1 = str(fila[1]).upper().strip() if len(fila) > 1 and fila[1] is not None else ''
 
     es_depto = col0 in DEPARTAMENTOS_COLOMBIA or any(d in col0 for d in DEPARTAMENTOS_COLOMBIA)
     es_muni = col1 in MUNICIPIOS_COLOMBIA or any(m in col1 for m in MUNICIPIOS_COLOMBIA)
 
-    # Validar por ubicación geográfica
+    # Validar por ubicación geográfica (método más confiable)
     if es_depto and es_muni:
         return True
 
-    # 🆕 v15.X: Validación relajada
+    # 🆕 v15.3: Validación más estricta para evitar falsos positivos
     tiene_direccion = False
     tiene_codigo_hab = False
 
-    for item in fila[:8]:
+    # Solo buscar código de habilitación en columnas 2-5 (no en col 0-1 que son ITEM/CUPS)
+    for i, item in enumerate(fila[2:6]):  # Columnas 2, 3, 4, 5
         if not item: continue
         item_str = str(item).upper().strip()
         
@@ -2921,17 +2917,18 @@ def es_dato_de_sede(fila: list) -> bool:
                 tiene_direccion = True
                 break
         
-        # Chequear código habilitación (8-12 dígitos)
-        clean_code = item_str.replace('.0', '').replace('-', '')
-        if clean_code.isdigit() and 8 <= len(clean_code) <= 12:
+        # Chequear código habilitación: debe ser 10-12 dígitos PUROS (sin guiones)
+        # Los códigos CUPS como 890202-04 tienen guiones, la habilitación no
+        clean_code = item_str.replace('.0', '')
+        if clean_code.isdigit() and 10 <= len(clean_code) <= 12:
             tiene_codigo_hab = True
 
-    # Si tiene código de habilitación, es suficiente para considerarla sede
-    if tiene_codigo_hab:
+    # Solo considerar sede si tiene AMBOS: código de habilitación Y (departamento O dirección)
+    if tiene_codigo_hab and (es_depto or es_muni or tiene_direccion):
         return True
 
-    # Si tiene dirección explícita, también (aunque no tenga código, puede ser un error de digitación)
-    if tiene_direccion:
+    # Si tiene dirección Y departamento/municipio, es sede
+    if tiene_direccion and (es_depto or es_muni):
         return True
 
     return False
