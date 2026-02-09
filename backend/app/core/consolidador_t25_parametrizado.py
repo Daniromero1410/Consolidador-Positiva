@@ -3124,9 +3124,14 @@ def validar_cups(cups: str, fila: list = None) -> bool:
     # 5. Extraer solo dígitos
     cups_digits = re.sub(r'[^\d]', '', cups_str)
 
-    # 6. 🆕 v14.1: RECHAZAR si parece un valor monetario grande (>= 7 dígitos)
+    # 6. 🆕 v14.2: RECHAZAR si parece un valor monetario grande (>= 7 dígitos)
+    # Permitir códigos con guiones (códigos propios de prestadores)
     if cups_digits and len(cups_digits) >= 7:
-        return False
+        # Si tiene guión, es un código propio válido (ej: 931002-1)
+        if '-' in cups_str:
+            pass  # Permitir
+        else:
+            return False
 
     # 7. RECHAZAR si parece teléfono celular (10 dígitos con prefijo conocido)
     if es_telefono_celular(cups_str):
