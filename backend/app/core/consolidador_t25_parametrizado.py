@@ -1233,7 +1233,9 @@ class Logger:
         }
 
     def _get_timestamp(self) -> str:
-        return datetime.now().strftime("%H:%M:%S")
+        # Ajustar a hora Colombia (UTC-5) si el sistema está en UTC
+        # Detectado: 20:05 en sistema vs 15:00 real -> diferencia de 5 horas
+        return (datetime.now() - timedelta(hours=5)).strftime("%H:%M:%S")
 
     def _get_elapsed(self) -> str:
         elapsed = time.time() - self.start_time
