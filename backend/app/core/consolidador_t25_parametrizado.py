@@ -4140,6 +4140,11 @@ class ProcesadorAnexo:
             if not hoja:
                 self.log.error("No se encontró hoja de servicios")
                 self.log.dedent()
+                # Obtener hojas disponibles para incluir en el mensaje
+                hojas = obtener_hojas(archivo)
+                if hojas:
+                    hojas_str = ", ".join([f"'{h}'" for h in hojas])
+                    return False, [], f"Sin hoja de servicios. Hojas disponibles: [{hojas_str}]"
                 return False, [], "Sin hoja de servicios"
 
             formato = detectar_formato_real(archivo)
