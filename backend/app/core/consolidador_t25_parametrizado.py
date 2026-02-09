@@ -1496,6 +1496,8 @@ class TipoAlerta(Enum):
     # 🆕 v14.1
     CONTRATO_NO_ENCONTRADO_GO = "CONTRATO_NO_ENCONTRADO_GO"
     FECHA_FALTANTE_MAESTRA = "FECHA_FALTANTE_MAESTRA"
+    # 🆕 v15.3: Archivos de paquetes (no van a No_Positiva)
+    ARCHIVO_PAQUETE = "ARCHIVO_PAQUETE"
 
 class PrioridadAlerta(Enum):
     CRITICA = 1
@@ -4971,11 +4973,23 @@ else:
 
                     regs += len(servs)
                 else:
-                    archivos_no_positiva.append({
-                        'contrato': id_c,
-                        'archivo': nombre,
-                        'motivo': msg
-                    })
+                    # Verificar si es un archivo de paquetes (no incluir en No_Positiva, solo en alertas)
+                    es_paquete = 'PAQUETE' in msg.upper() if msg else False
+                    
+                    if es_paquete:
+                        # Solo agregar alerta, no a archivos_no_positiva
+                        agregar_alerta_unica(Alerta(
+                            tipo=TipoAlerta.ARCHIVO_PAQUETE,
+                            mensaje=f"Archivo de paquetes: {msg}",
+                            contrato=id_c,
+                            archivo=nombre
+                        ).to_dict())
+                    else:
+                        archivos_no_positiva.append({
+                            'contrato': id_c,
+                            'archivo': nombre,
+                            'motivo': msg
+                        })
 
             except Exception as e:
                 archivos_no_positiva.append({
