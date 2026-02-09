@@ -287,6 +287,10 @@ def es_archivo_tarifas_valido(nombre: str) -> tuple:
         if not otros_anexos:
             return True, 'ANEXO_1'
 
+    # 🆕 v15.3: DETECCIÓN 5: PORTAFOLIO DE SERVICIOS (equivalente a ANEXO 1)
+    if 'PORTAFOLIO' in nombre_upper and 'SERVICIO' in nombre_upper:
+        return True, 'ANEXO_1'
+
     return False, 'INVALIDO'
 
 def contiene_anexo1(nombre: str) -> bool:
