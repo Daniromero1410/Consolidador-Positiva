@@ -4169,6 +4169,7 @@ class ProcesadorAnexo:
         """Extrae las sedes de un bloque de datos de sedes."""
         sedes = []
         k = inicio
+        print(f"    🔍 DEBUG extraer_sedes: inicio={inicio}, idx_hab={idx_hab}, idx_sede={idx_sede}")
 
         while k < len(datos) and len(sedes) < CONFIG.MAX_SEDES:
             fila = datos[k]
@@ -4177,31 +4178,46 @@ class ProcesadorAnexo:
                 continue
 
             if es_encabezado_seccion_sedes(fila) or es_encabezado_seccion_servicios(fila):
+                print(f"    🔍 DEBUG: Fila {k+1} es encabezado, terminando bucle")
                 break
 
-            if es_dato_de_sede(fila):
+            es_sede = es_dato_de_sede(fila)
+            print(f"    🔍 DEBUG Fila {k+1}: es_dato_de_sede={es_sede}")
+            
+            if es_sede:
                 if idx_hab >= 0 and idx_hab < len(fila):
                     codigo_hab = fila[idx_hab]
+                    print(f"    🔍 DEBUG: codigo_hab={codigo_hab}")
                     if codigo_hab:
                         codigo_str = str(codigo_hab).strip()
                         if codigo_str.endswith('.0'):
                             codigo_str = codigo_str[:-2]
                         codigo_clean = re.sub(r'[^\d]', '', codigo_str)
+                        print(f"    🔍 DEBUG: codigo_clean={codigo_clean} (len={len(codigo_clean)})")
 
                         if codigo_clean and codigo_clean.isdigit() and 5 <= len(codigo_clean) <= 12:
                             num_sede = fila[idx_sede] if idx_sede >= 0 and idx_sede < len(fila) else len(sedes) + 1
                             sedes.append({'codigo': codigo_hab, 'sede': num_sede})
+                            print(f"    ✅ DEBUG: SEDE AGREGADA - codigo={codigo_hab}, sede={num_sede}")
                             k += 1
                             continue
+                        else:
+                            print(f"    ❌ DEBUG: codigo_clean no cumple condición 5-12 dígitos")
+                    else:
+                        print(f"    ❌ DEBUG: codigo_hab es vacío/None")
+                else:
+                    print(f"    ❌ DEBUG: idx_hab={idx_hab} fuera de rango")
 
             if fila[0] is not None:
                 primera = str(fila[0]).upper().strip()
                 if not es_municipio_o_departamento(primera) and not es_direccion(primera):
                     if primera and not primera.isspace():
+                        print(f"    🔍 DEBUG: BREAK por primera='{primera}' no es muni/dept/dir")
                         break
 
             k += 1
 
+        print(f"    🔍 DEBUG: Total sedes encontradas: {len(sedes)}")
         return sedes
 
     def extraer_servicios(self, archivo: str, nombre: str) -> Tuple[bool, List[Dict], str]:
