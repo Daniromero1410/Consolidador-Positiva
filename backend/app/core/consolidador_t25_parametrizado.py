@@ -3149,7 +3149,8 @@ def validar_cups(cups: str, fila: list = None) -> bool:
 
     # 6. 🆕 v14.1: RECHAZAR si parece un valor monetario grande (>= 7 dígitos)
     if cups_digits and len(cups_digits) >= 7:
-        return False
+        if '-' not in cups_str:
+            return False
 
     # 7. RECHAZAR si parece teléfono celular (10 dígitos con prefijo conocido)
     if es_telefono_celular(cups_str):
@@ -3217,6 +3218,56 @@ def validar_tarifa(tarifa, fila: list = None) -> bool:
                     return False
 
     return True
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FUNCIONES DE LIMPIEZA Y NORMALIZACIÓN (FALTANTES AGREGADAS)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def normalizar_texto(texto) -> str:
+    """Normaliza texto: mayúsculas, sin espacios extra."""
+    if texto is None:
+        return ""
+    return str(texto).upper().strip()
+
+def limpiar_codigo(codigo) -> str:
+    """Limpia códigos (CUPS, Homólogos)."""
+    if codigo is None:
+        return ""
+    # Eliminar caracteres no deseados si es necesario, por ahora strip y upper
+    c = str(codigo).strip().upper()
+    if c.endswith('.0'):
+        c = c[:-2]
+    return c
+
+def limpiar_texto(texto) -> str:
+    """Limpia texto general."""
+    if texto is None:
+        return ""
+    return str(texto).strip()
+
+def limpiar_tarifa(valor) -> float:
+    """Intenta convertir a float, manejando formatos habituales."""
+    if valor is None:
+        return 0.0
+    
+    if isinstance(valor, (int, float)):
+        return float(valor)
+        
+    v = str(valor).strip().replace('$', '').replace(' ', '')
+    if not v:
+        return 0.0
+        
+    try:
+        # Intento directo
+        return float(v)
+    except:
+        # Manejo de miles/decimales (versión simplificada para Colombia: sin puntos/comas de miles)
+        # Si tiene ',' asumiendo decimal
+        v = v.replace(',', '.')
+        try:
+             return float(v)
+        except:
+             return 0.0
 
 def validar_manual_tarifario(manual) -> bool:
     if manual is None:
