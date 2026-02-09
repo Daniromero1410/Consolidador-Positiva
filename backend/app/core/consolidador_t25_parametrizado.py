@@ -708,34 +708,11 @@ def buscar_hoja_servicios_inteligente(hojas: list) -> tuple:
             if not debe_excluir_hoja_silenciosamente(h_norm):
                 return hoja, hojas_excluidas_info
 
-    # PASO 6: ANEXO 1 (Mejorado v15.2 con regex)
-    patrones_anexo1_hoja = [
-        r'ANEXO\s*[_\-\s]*0?1', 
-        r'ANEXO\s*N[OÚº°]?\.?\s*0?1',
-        r'^0?1$'
-    ]
+    # PASO 6: ANEXO 1
     for hoja, h_norm in hojas_validas.items():
-        if not debe_excluir_hoja_silenciosamente(h_norm):
-            # Prueba regex
-            for pat in patrones_anexo1_hoja:
-                if re.search(pat, h_norm):
-                    return hoja, hojas_excluidas_info
-            
-            # Prueba limpieza simple (backup)
-            h_clean = h_norm.replace(' ', '').replace('_', '').replace('.', '')
-            if h_clean in ['ANEXO1', 'ANEXO01', 'HOJA1', 'A1']:
-                return hoja, hojas_excluidas_info
-
-    # PASO 7: 🆕 v15.2 TARIFAS (Genérico) - Último recurso
-    # Si la hoja se llama "TARIFAS" o "TARIFA" (y no fue excluida por ser paquetes/costos)
-    for hoja, h_norm in hojas_validas.items():
-        if h_norm in ['TARIFAS', 'TARIFA', 'LISTA DE TARIFAS']:
-            return hoja, hojas_excluidas_info
-        
-        # O si contiene TARIFAS y no es de las excluidas
-        if 'TARIFAS' in h_norm or 'TARIFA' in h_norm:
-            # Validar que no tenga palabras negativas fuertes si es búsqueda genérica
-            if not any(x in h_norm for x in ['PAQUETE', 'COSTO', 'VIAJE', 'AMBULANCIA', 'TRASLADO']):
+        h_clean = h_norm.replace(' ', '').replace('_', '')
+        if h_clean in ['ANEXO1', 'ANEXO01']:
+            if not debe_excluir_hoja_silenciosamente(h_norm):
                 return hoja, hojas_excluidas_info
 
     # No se encontró hoja de servicios
@@ -3147,14 +3124,9 @@ def validar_cups(cups: str, fila: list = None) -> bool:
     # 5. Extraer solo dígitos
     cups_digits = re.sub(r'[^\d]', '', cups_str)
 
-    # 6. 🆕 v14.2: RECHAZAR si parece un valor monetario grande
-    # Permitir códigos con guiones (códigos propios de proveedores) hasta 12 dígitos
-    # Códigos sin guión rechazar solo si tienen >= 8 dígitos (antes era 7)
-    if cups_digits and len(cups_digits) >= 8:
-        if '-' not in cups_str:  # Códigos con guión son válidos hasta 12 dígitos
-            return False
-        elif len(cups_digits) > 12:  # Límite máximo incluso con guión
-            return False
+    # 6. 🆕 v14.1: RECHAZAR si parece un valor monetario grande (>= 7 dígitos)
+    if cups_digits and len(cups_digits) >= 7:
+        return False
 
     # 7. RECHAZAR si parece teléfono celular (10 dígitos con prefijo conocido)
     if es_telefono_celular(cups_str):
@@ -3222,56 +3194,6 @@ def validar_tarifa(tarifa, fila: list = None) -> bool:
                     return False
 
     return True
-
-# ══════════════════════════════════════════════════════════════════════════════
-# FUNCIONES DE LIMPIEZA Y NORMALIZACIÓN (FALTANTES AGREGADAS)
-# ══════════════════════════════════════════════════════════════════════════════
-
-def normalizar_texto(texto) -> str:
-    """Normaliza texto: mayúsculas, sin espacios extra."""
-    if texto is None:
-        return ""
-    return str(texto).upper().strip()
-
-def limpiar_codigo(codigo) -> str:
-    """Limpia códigos (CUPS, Homólogos)."""
-    if codigo is None:
-        return ""
-    # Eliminar caracteres no deseados si es necesario, por ahora strip y upper
-    c = str(codigo).strip().upper()
-    if c.endswith('.0'):
-        c = c[:-2]
-    return c
-
-def limpiar_texto(texto) -> str:
-    """Limpia texto general."""
-    if texto is None:
-        return ""
-    return str(texto).strip()
-
-def limpiar_tarifa(valor) -> float:
-    """Intenta convertir a float, manejando formatos habituales."""
-    if valor is None:
-        return 0.0
-    
-    if isinstance(valor, (int, float)):
-        return float(valor)
-        
-    v = str(valor).strip().replace('$', '').replace(' ', '')
-    if not v:
-        return 0.0
-        
-    try:
-        # Intento directo
-        return float(v)
-    except:
-        # Manejo de miles/decimales (versión simplificada para Colombia: sin puntos/comas de miles)
-        # Si tiene ',' asumiendo decimal
-        v = v.replace(',', '.')
-        try:
-             return float(v)
-        except:
-             return 0.0
 
 def validar_manual_tarifario(manual) -> bool:
     if manual is None:
@@ -4169,7 +4091,6 @@ class ProcesadorAnexo:
         """Extrae las sedes de un bloque de datos de sedes."""
         sedes = []
         k = inicio
-        print(f"    🔍 DEBUG extraer_sedes: inicio={inicio}, idx_hab={idx_hab}, idx_sede={idx_sede}")
 
         while k < len(datos) and len(sedes) < CONFIG.MAX_SEDES:
             fila = datos[k]
@@ -4178,46 +4099,31 @@ class ProcesadorAnexo:
                 continue
 
             if es_encabezado_seccion_sedes(fila) or es_encabezado_seccion_servicios(fila):
-                print(f"    🔍 DEBUG: Fila {k+1} es encabezado, terminando bucle")
                 break
 
-            es_sede = es_dato_de_sede(fila)
-            print(f"    🔍 DEBUG Fila {k+1}: es_dato_de_sede={es_sede}")
-            
-            if es_sede:
+            if es_dato_de_sede(fila):
                 if idx_hab >= 0 and idx_hab < len(fila):
                     codigo_hab = fila[idx_hab]
-                    print(f"    🔍 DEBUG: codigo_hab={codigo_hab}")
                     if codigo_hab:
                         codigo_str = str(codigo_hab).strip()
                         if codigo_str.endswith('.0'):
                             codigo_str = codigo_str[:-2]
                         codigo_clean = re.sub(r'[^\d]', '', codigo_str)
-                        print(f"    🔍 DEBUG: codigo_clean={codigo_clean} (len={len(codigo_clean)})")
 
                         if codigo_clean and codigo_clean.isdigit() and 5 <= len(codigo_clean) <= 12:
                             num_sede = fila[idx_sede] if idx_sede >= 0 and idx_sede < len(fila) else len(sedes) + 1
                             sedes.append({'codigo': codigo_hab, 'sede': num_sede})
-                            print(f"    ✅ DEBUG: SEDE AGREGADA - codigo={codigo_hab}, sede={num_sede}")
                             k += 1
                             continue
-                        else:
-                            print(f"    ❌ DEBUG: codigo_clean no cumple condición 5-12 dígitos")
-                    else:
-                        print(f"    ❌ DEBUG: codigo_hab es vacío/None")
-                else:
-                    print(f"    ❌ DEBUG: idx_hab={idx_hab} fuera de rango")
 
             if fila[0] is not None:
                 primera = str(fila[0]).upper().strip()
                 if not es_municipio_o_departamento(primera) and not es_direccion(primera):
                     if primera and not primera.isspace():
-                        print(f"    🔍 DEBUG: BREAK por primera='{primera}' no es muni/dept/dir")
                         break
 
             k += 1
 
-        print(f"    🔍 DEBUG: Total sedes encontradas: {len(sedes)}")
         return sedes
 
     def extraer_servicios(self, archivo: str, nombre: str) -> Tuple[bool, List[Dict], str]:
