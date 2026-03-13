@@ -11,13 +11,57 @@ const api = axios.create({
 });
 
 // ============================================
+// INTERCEPTOR JWT - Agrega token a cada request
+// ============================================
+api.interceptors.request.use(
+  (config) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Interceptor de respuesta - Maneja 401 (token expirado)
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401 && typeof window !== 'undefined') {
+      // Intentar refresh
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (refreshToken && !error.config._retry) {
+        error.config._retry = true;
+        try {
+          const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+            refresh_token: refreshToken,
+          });
+          localStorage.setItem('access_token', res.data.access_token);
+          localStorage.setItem('refresh_token', res.data.refresh_token);
+          error.config.headers.Authorization = `Bearer ${res.data.access_token}`;
+          return api(error.config);
+        } catch {
+          // Refresh falló → limpiar sesión
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          localStorage.removeItem('user');
+          window.location.href = '/login';
+        }
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+// ============================================
 // MAESTRA
 // ============================================
 
 export const uploadMaestra = async (file: File) => {
   const formData = new FormData();
   formData.append('file', file);
-  
+
   const response = await api.post('/upload/maestra', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
@@ -45,7 +89,7 @@ export const getMaestraContratos = async (año?: number, numero?: string) => {
   const params = new URLSearchParams();
   if (año) params.append('año', año.toString());
   if (numero) params.append('numero', numero);
-  
+
   const response = await api.get(`/maestra/contratos?${params}`);
   return response.data;
 };

@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # ══════════════════════════════════════════════════════════════
+  # PostgreSQL - Base de datos para autenticación
+  # ══════════════════════════════════════════════════════════════
+  postgres:
+    image: postgres:16-alpine
+    container_name: consolidador_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: consolidador_db
+      POSTGRES_USER: consolidador_admin
+      POSTGRES_PASSWORD: C0ns0l1d4d0r_S3cur3_2025!
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U consolidador_admin -d consolidador_db" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ══════════════════════════════════════════════════════════════
+  # pgAdmin - Panel de administración (opcional, desarrollo)
+  # ══════════════════════════════════════════════════════════════
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: consolidador_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@gestar.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    driver: local

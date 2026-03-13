@@ -137,11 +137,19 @@ def leer_output_proceso(proceso, job_id: str, output_queue: Queue):
         for linea in iter(proceso.stdout.readline, ''):
             if not linea:
                 break
-            
+
             linea = linea.strip()
             if not linea:
                 continue
-            
+
+            # Actualizar contador de contratos procesados (independiente del filtro de display)
+            _match_contrato = re.search(r'CONTRATO\s+\[(\d+)/(\d+)\]', linea, re.IGNORECASE)
+            if _match_contrato:
+                with jobs_lock:
+                    if job_id in jobs:
+                        jobs[job_id]["contratos_procesados"] = int(_match_contrato.group(1))
+                        jobs[job_id]["contratos_total"] = int(_match_contrato.group(2))
+
             # Verificar si debemos mostrar este log
             mostrar, procesamiento_iniciado = debe_mostrar_log(linea, procesamiento_iniciado)
             

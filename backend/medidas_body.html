@@ -1,0 +1,520 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml" class="k-webkit k-webkit145"><head id="ctl00_Head1"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="X-UA-Compatible" content="IE=edge"><title>
+	Consulta RNMC
+</title><link rel="icon" type="image/gif" href="images/ofite.gif"><link href="css/bootstrap.min.css?3944004805" rel="stylesheet" type="text/css"><link href="css/bootstrapl-chosen.css?3944004805" rel="stylesheet" type="text/css"><link href="css/portal.css?3944004805" rel="stylesheet" type="text/css">              
+    <link href="plugins/simple-line-icons/simple-line-icons.min.css?3944004805" "="" rel="stylesheet" type="text/css">    
+    <link href="css/main.css?3944004805" rel="stylesheet" type="text/css"><link href="kendoui/css/kendo.common.min.css" rel="stylesheet" type="text/css"><link href="kendoui/css/kendo.default.min.css" rel="stylesheet" type="text/css"><link href="css/styles_grilla.css" rel="stylesheet" type="text/css"><link href="css/style_load.css" rel="stylesheet" type="text/css"><link href="css/colors.css" rel="stylesheet" type="text/css">
+        
+    <script src="js/jquery.js" type="text/javascript"></script>   
+    <script src="js/bootstrap.min.js" type="text/javascript"></script>        
+    <script src="js/main.js" type="text/javascript"></script>    
+    <script src="js/sweetalert.min.js" type="text/javascript"></script>
+    <script src="js/chosenl.jquery.js" type="text/javascript"></script>  
+    
+    
+
+    <script type="text/javascript" src="bootstrap-datetimepicker/js/bootstrap-datetimepicker-local.js?3944004805"></script>
+    <script type="text/javascript" src="bootstrap-datetimepicker/js/bootstrap-datetimepicker.js?3944004805"></script>
+    <link href="bootstrap-datetimepicker/css/bootstrap-datetimepicker.css?3944004805" rel="stylesheet">
+
+
+    <script src="js/bootstrapValidator.js" type="text/javascript"></script>
+    <link href="css/bootstrapl-chosen.css?3944004805" rel="stylesheet" type="text/css">
+    <link href="kendoui/css/kendo.common.min.css" rel="stylesheet" type="text/css">
+    <link href="kendoui/css/kendo.default.min.css" rel="stylesheet" type="text/css">
+    <link href="css/styles_grilla.css" rel="stylesheet" type="text/css">
+
+    <style type="text/css">
+        .alert-descripcion {
+            color: #142749;
+            background-color: #419aff26;
+            border-color: #419aff26;
+            padding: 6px !important;
+            width: 82% !important;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            text-align: justify;
+        }
+
+        .paddin-btn {
+            padding-top: 23px !important;
+        }
+
+        .panel-body {
+            text-align: center;
+        }
+
+        @media(max-width:992px) {
+            .alert-descripcion {
+                margin: 9px !important;
+                width: 97% !important;
+            }
+
+            .paddin-btn {
+                padding-top: 0px !important;
+                text-align: center;
+            }
+        }
+    </style>
+
+    <script type="text/javascript">
+        $(document).ready(function () {
+            //cargar_grilla();
+            fecha();
+            var prm = Sys.WebForms.PageRequestManager.getInstance();
+            var botonPresionado;
+
+            prm.add_beginRequest(function (sender, args) {
+                botonPresionado = args.get_postBackElement();
+            });
+
+            prm.add_endRequest(function () {
+                //cargar_grilla();
+                fecha();
+                $("#ctl00_ContentPlaceHolder3_btnConsultar").enabled = true;
+            });
+
+        });
+
+        function fecha() {
+            $("#txtFechaexp").datetimepicker({
+                format: 'DD/MM/YYYY',
+                maxDate: new Date()
+            });
+        }
+
+        function cerrarmodal() {
+            $('#modalNotificaciones').modal('hide');
+        }
+
+        function imprimirPage() {
+            window.print();
+        }
+
+    </script>
+
+
+        
+    <style type="text/css">        
+
+    body {
+	     background-image: url(img/fondomp.png);
+	     background-repeat: no-repeat;
+         background-position:top center;
+	     background-attachment:fixed;		
+    }
+    </style> 
+      
+</head>
+<body oncontextmenu="return false">
+    <div id="wrap">
+        <form name="aspnetForm" method="post" action="./frm_cnp_consulta.aspx" onsubmit="javascript:return WebForm_OnSubmit();" id="aspnetForm" idl="form2">
+<div>
+<input type="hidden" name="ctl00_ContentPlaceHolder3_ToolkitScriptManager2_HiddenField" id="ctl00_ContentPlaceHolder3_ToolkitScriptManager2_HiddenField" value=";;AjaxControlToolkit, Version=4.1.60501.0, Culture=neutral, PublicKeyToken=28f01b0e84b6d53e:es:5c09f731-4796-4c62-944b-da90522e2541:475a4ef5:effe2a26:3ac3e789:5546a2b:d2e10b12:37e2e5c9:1d3ed089:751cdd15:dfad98a5:497ef277:a43b07eb:3cf12cf1">
+<input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="">
+<input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="">
+<input type="hidden" name="__LASTFOCUS" id="__LASTFOCUS" value="">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="ynj2icacH7XrhLr1B9sUXRU1QQW11qN7qILzdpIppMQcN45DTJl2Pd707QL1aezhhRcvFhlX3rzctYPp0HdwLFnBWDNCYwLSIj8LJyMlaT9GKXL4gC8qhmiRel9CVDp2kpejTf/yEwRBBNPbD3kFPUWi2AcIG7eUwCHd0VTCz+SUQ9NBql15Jt5bAUaAEcQCi/oYyzgZD4KQ8vn4DqLqDJRWwvGZq0k3IQS3Aty8ebQWsIm+4EvqMwg3jQElA+3ArUgqTMf5amA3QYySHXCFQmo+BTbAeGoxTZvrf4SFgQsa9opR2za/Yj1sZHm85qSpFUemKBx2NFIbKNXN0RiBWzWR90iEWXRNDVMQBcVTnDR4YRQmYBHMpp1B8WAmpTTjSaaW1TGSVilzNnXHuasism5BHGOgaZ0gTHAqReZPrtaYdYxfEdQ3S1k/t/kEwoZmHmjbUpowp366I2zU0P5enhWkLMphV2DbNxW7B0COkeNe18ku/BhmR21JEtOnEpwiNza1Z+8OEwWSGChSgOrbQJHEK76gNW70ZMK8UQLDsvjRx4Q89P2DqP6YaTdb1RzzBsobhGOLmpgshLYZYMZx8t+Wu9+DBvMBUzmS09LJ+t4gSfcAwewyusFJGfhvBYiPB4q4sRDxW8El89vQxR7ka/E+tS6UVy9hWMsZJt4ouIYB26L7/EZFwcFBvBhsZLyR+o1iPRsQb3ei/bT28mr4NQqAJE599S8x0yxDlalaOcQ+XPbOOgt6EaNFUwE8Feh8rb+R64azswXggL+W7Er3X+DIQOTDuEJZldxAsn4iqKUBuKfVqU77qzWCNk+KapK/">
+</div>
+
+<script type="text/javascript">
+//<![CDATA[
+var theForm = document.forms['aspnetForm'];
+if (!theForm) {
+    theForm = document.aspnetForm;
+}
+function __doPostBack(eventTarget, eventArgument) {
+    if (!theForm.onsubmit || (theForm.onsubmit() != false)) {
+        theForm.__EVENTTARGET.value = eventTarget;
+        theForm.__EVENTARGUMENT.value = eventArgument;
+        theForm.submit();
+    }
+}
+//]]>
+</script>
+
+
+<script src="/PSC/WebResource.axd?d=gGv_djALwd4dRkMO-SvZX9ORGy_-x0mbUr7RDHc2ZG4w20PcoBn-crAPx-3LG3jTKPefRkGGLre1cwf5DBrz2jF9RBhywaCkbYEN4R6cvhM1&amp;t=638563091773552689" type="text/javascript"></script>
+
+
+<script src="/PSC/ScriptResource.axd?d=eJsmJeToM-08FKmuEHMUuSFeZp61EFi8110Bfo4teKBQS-tZlrb2gmg1e28wN9jmsYkju1YOwSDm8qyX4zQKWTvGc32R7C2RTOP7ypf4nerkBbz9odjft5AqHsusS2hLMenxZeL_KM9Xo2rOyLjj7morzkpI81QntW-jEQESD0U1&amp;t=7266186d" type="text/javascript"></script>
+<script src="/PSC/ScriptResource.axd?d=m1cc6qcRxhZ-Ibg1qs9FlNI5Wv4KJi0BMe3YVCzsRDxulfnZgur7EvcBUEnyo2UPC71DE8sWHyhih9Y6gx-Y81aVQlupTkmZfM1kQFv0uGV6aGMigupMywex0hI72mPr-JirGz7wyx5_tuiML_czsA2&amp;t=ffffffffaa73f696" type="text/javascript"></script>
+<script type="text/javascript">
+//<![CDATA[
+if (typeof(Sys) === 'undefined') throw new Error('ASP.NET Ajax client-side framework failed to load.');
+//]]>
+</script>
+
+<script src="/PSC/ScriptResource.axd?d=HdFQepo1BPQgUQJvHHAQYPA7VnIfIP2I847DyDd5yHVrTVa1_rH6RjZvtEHkvAOZHi5h1uyv0oDn1D32U8meIdKk00dZEdIzXX3VjjY4PcYZWlvlNnsz2K5KHtHkWfgaG839oII5TAWqmNg2QM-Cmw2&amp;t=ffffffffaa73f696" type="text/javascript"></script>
+<script src="/PSC/frm_cnp_consulta.aspx?_TSM_HiddenField_=ctl00_ContentPlaceHolder3_ToolkitScriptManager2_HiddenField&amp;_TSM_CombinedScripts_=%3b%3bAjaxControlToolkit%2c+Version%3d4.1.60501.0%2c+Culture%3dneutral%2c+PublicKeyToken%3d28f01b0e84b6d53e%3aes%3a5c09f731-4796-4c62-944b-da90522e2541%3a475a4ef5%3aeffe2a26%3a3ac3e789%3a5546a2b%3ad2e10b12%3a37e2e5c9%3a1d3ed089%3a751cdd15%3adfad98a5%3a497ef277%3aa43b07eb%3a3cf12cf1" type="text/javascript"></script>
+<script type="text/javascript">
+//<![CDATA[
+function WebForm_OnSubmit() {
+if (typeof(ValidatorOnSubmit) == "function" && ValidatorOnSubmit() == false) return false;
+return true;
+}
+//]]>
+</script>
+
+<div>
+
+	<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="CE29B298">
+	<input type="hidden" name="__VIEWSTATEENCRYPTED" id="__VIEWSTATEENCRYPTED" value="">
+	<input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="CsXVSTN96lYNU9L+Jd2MUQ9y3s/4WVrkREqi9SwDJDQ6h8kQ9dIwGU0O9ToLuefnsauCIp0USO3G7UlwwxIkazxfu+pm21mmxtJmJnA4DYnGoz4Wso1Gg2b1aGeUDUCFXxwtpqEOX/zgJmMpP8rohSKxvVjicJ9/xoQtZjU3yS866qywY7LIN5twiZewNr8zkCyJFGTmGOnf9IgEtVZ0bNq9UR7h7n1Ly1M8Y3HT+5rf9SDliWGbHHy1Rlgqes/m9qIvVDq7cJa3qzMriEIwkxoNRydegzutZrItR+cc/20r0qICjqkOTx4NrXuUWV1c2GeY6xlCf+1eoj6zn8S/HJj01Raz1RCzNNtbrs0POkeZOshH9BlbibrHoA3OXnqAtV10NpRz9asIaKxwLIUbtzakY0ghsJZxHjOmqdyDu4Ik38dBkK+54oKEGCGG8LuPGHsx9oetpINxlPhkX375uKXz5DqPh0SWNv45ZEWwCgY=">
+</div>
+            <div class="jumbotron" style="background-color: black">
+                <div class="container-fluid">
+                    <div class="col-xs-12 col-md-11" id="titulo1">
+                        <p>
+                            <img alt="PONAL" src="img/icon_ponal.png">&nbsp;Policía Nacional de Colombia  </p>
+                    </div>
+                    <div class="col-md-1 text-center" id="titulo2">
+                        <a href="https://www.policia.gov.co/"><span class="navbar-link link-menu icon-home"></span></a>&nbsp;&nbsp;<a href="#"><span class="navbar-link link-buscar icon-magnifier"></span></a>
+                    </div>
+                </div>
+            </div>
+            <div class="jumbotron titulo3" style="background-color: #3D3D3D; font-size: 12px;">
+                <div class="container-fluid">
+                    <div class="row">
+                        <div class="col-xs-12 text-right">
+                            <a href="Default.aspx"><span class="navbar-link link-menu icon-home"></span></a>&nbsp;&nbsp;<a href="#"><span class="navbar-link link-buscar icon-magnifier"></span></a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="jumbotron titulo4" style="background-color: #142749; font-size: 12px;">
+                <div class="container-fluid">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <p>Portal de Servicios al Ciudadano PSC</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            
+            
+
+    
+
+    <script src="js/bootstrap-checkbox.js" type="text/javascript"></script>
+    <script src="js/docs.js" type="text/javascript"></script>
+    <script src="js/jquery.metadata.js" type="text/javascript"></script>
+    <script src="js/jquery.dataTables.min.js" type="text/javascript"></script>
+    <script src="js/jquery-ui.min.js" type="text/javascript"></script>
+    <script src="js/jquery-migrate.js" type="text/javascript"></script>
+    <script src="kendoui/js/kendo.web.min.js" type="text/javascript"></script>
+    <script src="kendoui/js/cultures/kendo.culture.es-CL.min.js" type="text/javascript"></script>
+    <script src="kendoui/js/console.js" type="text/javascript"></script>
+    <script src="js/chosenl.jquery.js" type="text/javascript"></script>
+
+    <script type="text/javascript">
+//<![CDATA[
+Sys.WebForms.PageRequestManager._initialize('ctl00$ContentPlaceHolder3$ToolkitScriptManager2', 'aspnetForm', ['tctl00$ContentPlaceHolder3$UpdatePanel1_','','tctl00$ContentPlaceHolder3$udpMsjEmergente',''], [], ['ctl00$ContentPlaceHolder3$btnNuevo','','ctl00$ContentPlaceHolder3$btn_salir_modal',''], 90, 'ctl00');
+//]]>
+</script>
+
+
+    <div id="ctl00_ContentPlaceHolder3_UpdatePanel1_">
+	
+
+            
+            
+            
+
+            
+            <div class="modal fade" id="modalNotificaciones" data-backdrop="static" data-keyboard="false" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+                <div class="modal-dialog" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header" style="padding: 0px; padding-left: 15px;">
+                            <button type="button" class="close" data-dismiss="modalNotificaciones" aria-label="Close"><span aria-hidden="true">×</span></button>
+                            <h4 class="modal-title" id="lbl_titulo">
+                                <span id="ctl00_ContentPlaceHolder3_lbltitulomodal"></span></h4>
+                        </div>
+                        <div class="modal-body">
+                            <p>
+                                <span id="ctl00_ContentPlaceHolder3_lblcontenidomodal"></span>
+                            </p>
+                        </div>
+                        <div class="modal-footer">
+                            <a onclick="cerrarmodal();" id="ctl00_ContentPlaceHolder3_btn_salir_modal" class="btn btn-success" data-dismiss="modal" href="javascript:__doPostBack('ctl00$ContentPlaceHolder3$btn_salir_modal','')"><span class="btn-label"><i class="glyphicon glyphicon-ok"></i></span> Aceptar</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+
+            
+
+            <div class="container" id="flotante" style="display: normal">
+
+                <div class="row">
+                    <h2 class="text-center" style="margin-top: 20px;">Sistema Registro Nacional de Medidas Correctivas RNMC</h2>
+                    <br>
+                </div>
+
+                <div class="panel panel-success principal">
+                    <div class="panel-heading panel-titulo">
+                        <h4><span class="glyphicon glyphicon-user"></span>&nbsp;Consulta Ciudadano</h4>
+                    </div>
+
+                    <div id="ctl00_ContentPlaceHolder3_pn_consulta" class="panel-body">
+
+                        <div class="row">
+
+                            <div class="col-md-4" style="text-align: left">
+                                <div class="form-group">
+                                    <label class="Label" style="text-align: left">Consultar por:</label>
+                                    <select name="ctl00$ContentPlaceHolder3$ddlTipoDoc" onchange="javascript:setTimeout('__doPostBack(\'ctl00$ContentPlaceHolder3$ddlTipoDoc\',\'\')', 0)" id="ctl00_ContentPlaceHolder3_ddlTipoDoc" tabindex="1" class="form-control">
+		<option selected="selected" value="0">Número de Comparendo o Expediente</option>
+		<option value="1">NIT, sin digito de verificación</option>
+		<option value="55">CEDULA DE CIUDADANIA</option>
+		<option value="57">CÉDULA DE EXTRANJERÍA</option>
+		<option value="842">DOCUMENTO DE IDENTIFICACIÓN EXTRANJERO</option>
+		<option value="58">PASAPORTE</option>
+		<option value="848">PERSONA JURIDICA</option>
+		<option value="56">TARJETA DE IDENTIDAD</option>
+
+	</select>
+                                </div>
+                            </div>
+
+                            <div class="col-md-4" style="text-align: left">
+                                <label class="Label">N° Identificación, Comparendo o Expediente:</label>
+                                <span id="ctl00_ContentPlaceHolder3_vtxtExpediente" style="display:inline-block;color:Red;width:10px;visibility:hidden;">*</span>
+                                <div class="input-group stylish-input-group">
+                                    <input name="ctl00$ContentPlaceHolder3$txtExpediente" type="text" maxlength="22" id="ctl00_ContentPlaceHolder3_txtExpediente" tabindex="1" autocomplete="off" class="form-control" placeholder="Identificación, Expediente o Comparendo" style="width:100%;">
+                                    
+                                    <span id="ctl00_ContentPlaceHolder3_buscar" class="input-group-addon">
+                                        <a onclick="btnGuardar(this);" id="ctl00_ContentPlaceHolder3_btnConsultar" tabindex="41" href="javascript:__doPostBack('ctl00$ContentPlaceHolder3$btnConsultar','')"><span class="glyphicon glyphicon-search"></span></a>
+                                    </span>
+                                </div>
+                            </div>
+
+                            
+
+                        </div>
+
+                        
+
+
+                        <div class="row">
+                            <hr>
+                            <div class="col-md-12">
+                                <a onclick="return mostrarBarra();" id="ctl00_ContentPlaceHolder3_btnNuevo" tabindex="20" class="btn btn-success" href="javascript:__doPostBack('ctl00$ContentPlaceHolder3$btnNuevo','')"><span class="glyphicon glyphicon-search"></span>&nbsp; Nueva Busqueda</a>&nbsp;
+                                <a id="ctl00_ContentPlaceHolder3_btnActivaPol" tabindex="20" class="btn btn-success" href="javascript:__doPostBack('ctl00$ContentPlaceHolder3$btnActivaPol','')"><span class="glyphicon glyphicon-user"></span>&nbsp; Validar Policía</a>&nbsp;
+                                 <a id="ctl00_ContentPlaceHolder3_btnDesPreguntas" tabindex="20" class="btn btn-success" href="https://srvcnpc.policia.gov.co/multimedia/formatos/PREGUNTAS_FRECUENTES_CNSCC_RNMC.pdf"><span class="glyphicon glyphicon-info-sign"></span>&nbsp; Preguntas Frecuentes</a>&nbsp;
+                                
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+
+                
+
+                <!-- inicio nuevo panel -->
+                
+                <!-- fin nuevo panel  -->
+
+                <!-- inicio nuevo panel EXTRANJERIA-->
+                
+                <!-- fin nuevo panel EXTRANJERIA -->
+
+                <!-- inicio nuevo panel cuando tienen registros -->
+                
+                <!-- fin nuevo panel cuando tienen registros -->
+
+                <div class="row">
+                    <hr>
+                    <div class="col-md-12">
+                        <div class="table-responsive">
+
+                            
+
+
+
+                            <div>
+
+	</div>
+
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- INICIO nuevo panel cuando tienen registros DOS -->
+                
+                <!-- fin nuevo panel cuando tienen registros DOS -->
+
+            </div>
+
+            
+
+
+
+
+
+
+            </div>
+
+
+
+                                                    
+
+            </form></div>
+             
+        
+
+
+
+
+    <div class="col-md-4">
+        <div class="form-group">
+            <div id="ctl00_ContentPlaceHolder3_UpdateProgress1" style="display:none;" role="status" aria-hidden="true">
+	
+                    <div class="loader_decad">
+                        <div class="loader_dialog">
+                            
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">×</span></button>
+                                    <h4 class="modal-title" id="myModalLabel2">
+                                        <img src="img/Cargando.gif" width="101px" height="106px">Señor Ciudadano</h4>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="alert alert-warning" role="alert">
+                                        <h5>El sistema esta procesando su solicitud, por favor espere.</h5>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="loader_back"></div>
+                
+</div>
+        </div>
+    </div>
+
+
+    <div id="ctl00_ContentPlaceHolder3_udpMsjEmergente">
+	
+            
+
+<style type="text/css">
+    .Modal_trans
+    {
+        opacity: 0.8;
+        filter: alpha(opacity=60);
+        background: black;
+    }
+</style>
+<div id="ctl00_ContentPlaceHolder3_PopMsg_PopPanel" onkeypress="javascript:return WebForm_FireDefaultButton(event, 'ctl00_ContentPlaceHolder3_PopMsg_ok')" style="color: white; background-color: white; border-color: rgb(255, 255, 204); border-width: 2px; border-style: solid; width: 350px; border-radius: 9px; overflow: hidden; display: none; position: fixed; z-index: 100001;">
+		
+    <table width="100%" style="border-collapse: collapse; border:0px;">
+        <tbody><tr id="ctl00_ContentPlaceHolder3_PopMsg_boxheader" style="cursor: move;">
+			<td style="background-color: #666666; padding-left: 10px; padding-top: 3px; padding-bottom: 3px;" colspan="2">
+                <span id="ctl00_ContentPlaceHolder3_PopMsg_lblTitle" style="color:#D0DAE1;font-size:12px;">Importante:</span>
+            </td>
+		</tr>
+		
+        <tr>
+            <td id="ctl00_ContentPlaceHolder3_PopMsg_icon" align="center" style="width: 50px; padding-left: 10px; padding-top: 5px; padding-bottom: 5px;">
+                <img id="ctl00_ContentPlaceHolder3_PopMsg_image" src="images/info.png" style="border-width:0px;">
+            </td>
+		
+            <td style="padding: 10px; width: 220px;">
+                <span id="ctl00_ContentPlaceHolder3_PopMsg_lblMsg" style="color:#333333;"></span>
+            </td>
+        </tr>
+        <tr>
+            <td align="right" style="padding-right: 20px; padding-top: 7px; padding-bottom: 7px;
+                background-color: #666666; border-top-style: solid; border-top-width: 2px; border-top-color: #999999;" colspan="2">
+                <a id="ctl00_ContentPlaceHolder3_PopMsg_LinkButton1" href="javascript:__doPostBack('ctl00$ContentPlaceHolder3$PopMsg$LinkButton1','')"></a>
+                <input type="submit" name="ctl00$ContentPlaceHolder3$PopMsg$ok" value="Ok" id="ctl00_ContentPlaceHolder3_PopMsg_ok" style="width:100px;">
+                
+            </td>
+        </tr>
+    </tbody></table>
+
+	</div>
+
+
+        
+<div id="ctl00_ContentPlaceHolder3_PopMsg_PopUp_backgroundElement" class="Modal_trans" style="display: none; position: fixed; left: 0px; top: 0px; z-index: 10000;"></div></div>
+
+
+            
+
+        
+<script type="text/javascript">
+//<![CDATA[
+var Page_Validators =  new Array(document.getElementById("ctl00_ContentPlaceHolder3_vtxtExpediente"));
+//]]>
+</script>
+
+<script type="text/javascript">
+//<![CDATA[
+var ctl00_ContentPlaceHolder3_vtxtExpediente = document.all ? document.all["ctl00_ContentPlaceHolder3_vtxtExpediente"] : document.getElementById("ctl00_ContentPlaceHolder3_vtxtExpediente");
+ctl00_ContentPlaceHolder3_vtxtExpediente.controltovalidate = "ctl00_ContentPlaceHolder3_txtExpediente";
+ctl00_ContentPlaceHolder3_vtxtExpediente.errormessage = "*";
+ctl00_ContentPlaceHolder3_vtxtExpediente.validationGroup = "v_datos";
+ctl00_ContentPlaceHolder3_vtxtExpediente.evaluationfunction = "RequiredFieldValidatorEvaluateIsValid";
+ctl00_ContentPlaceHolder3_vtxtExpediente.initialvalue = "";
+//]]>
+</script>
+
+
+<script type="text/javascript">
+//<![CDATA[
+(function() {var fn = function() {$get("ctl00_ContentPlaceHolder3_ToolkitScriptManager2_HiddenField").value = '';Sys.Application.remove_init(fn);};Sys.Application.add_init(fn);})();
+var Page_ValidationActive = false;
+if (typeof(ValidatorOnLoad) == "function") {
+    ValidatorOnLoad();
+}
+
+function ValidatorOnSubmit() {
+    if (Page_ValidationActive) {
+        return ValidatorCommonOnSubmit();
+    }
+    else {
+        return true;
+    }
+}
+        
+document.getElementById('ctl00_ContentPlaceHolder3_vtxtExpediente').dispose = function() {
+    Array.remove(Page_Validators, document.getElementById('ctl00_ContentPlaceHolder3_vtxtExpediente'));
+}
+Sys.Application.add_init(function() {
+    $create(Sys.Extended.UI.FilteredTextBoxBehavior, {"ValidChars":"1234567890-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz","id":"ctl00_ContentPlaceHolder3_FilteredTextBoxExtender9"}, null, null, $get("ctl00_ContentPlaceHolder3_txtExpediente"));
+});
+Sys.Application.add_init(function() {
+    $create(Sys.UI._UpdateProgress, {"associatedUpdatePanelId":"ctl00_ContentPlaceHolder3_UpdatePanel1_","displayAfter":0,"dynamicLayout":true}, null, null, $get("ctl00_ContentPlaceHolder3_UpdateProgress1"));
+});
+Sys.Application.add_init(function() {
+    $create(Sys.Extended.UI.ModalPopupBehavior, {"BackgroundCssClass":"Modal_trans","OkControlID":"ctl00_ContentPlaceHolder3_PopMsg_ok","PopupControlID":"ctl00_ContentPlaceHolder3_PopMsg_PopPanel","PopupDragHandleControlID":"ctl00_ContentPlaceHolder3_PopMsg_boxheader","dynamicServicePath":"/PSC/frm_cnp_consulta.aspx","id":"ctl00_ContentPlaceHolder3_PopMsg_PopUp"}, null, null, $get("ctl00_ContentPlaceHolder3_PopMsg_LinkButton1"));
+});
+//]]>
+</script>
+
+    
+    
+
+<footer class="footer ">
+    <div class="container ">
+        <img src="img/Footer.png" class="img-responsive">
+    </div>
+</footer>
+
+
+
+
+
+
+
+
+        
+
+</body></html>

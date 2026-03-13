@@ -13,3 +13,14 @@ chardet==5.2.0
 tqdm==4.67.1
 python-dotenv==1.2.1
 aiofiles==25.1.0
+# ── Autenticación ──
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+bcrypt==4.2.1
+PyJWT==2.10.1
+# ── Certificados (Playwright) ──
+playwright==1.49.1
+# ── Extracción de PDFs (Actas de Negociación) ──
+pymupdf==1.26.7
+pytesseract==0.3.13
+Pillow==12.1.0

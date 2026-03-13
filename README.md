@@ -1089,125 +1089,118 @@ ws.onclose = () => {
 
 ---
 
-## Configuración y Despliegue
+## Guía de Instalación Local (Clonar desde GitHub)
 
-### Variables de Entorno (Backend)
+Para asegurar que puedas trabajar desde cualquier computadora, sigue estos pasos para configurar el proyecto desde cero tras clonarlo de tu repositorio.
 
-```env
-# SFTP Configuration
-SFTP_HOST=sftp.servidor.com
-SFTP_PORT=22
-SFTP_USERNAME=usuario
-SFTP_PASSWORD=contraseña_segura
-SFTP_CARPETA_PRINCIPAL=/ruta/principal
+### 1. Requisitos Previos
 
-# Application Settings
-MAX_SEDES=50
-TIMEOUT_EXTRACCION=60
-MAX_FILAS_POR_HOJA=500000
+Asegúrate de tener instalado en tu nueva PC:
+- **Git** (para clonar el repositorio)
+- **Node.js 18+** (para correr el frontend)
+- **Python 3.11+** (para el backend)
+- **Docker Desktop** (para levantar la base de datos de PostgreSQL fácilmente)
 
-# CORS (opcional)
-CORS_ORIGINS=*  # Producción: https://tu-dominio.com
-```
+---
 
-### Variables de Entorno (Frontend)
+### 2. Clonar el Repositorio
 
-```env
-# API URL
-NEXT_PUBLIC_API_URL=http://localhost:8000/api
-
-# Producción
-NEXT_PUBLIC_API_URL=https://api.tu-dominio.com/api
-```
-
-### Requisitos del Sistema
-
-**Backend:**
-- CPU: 2+ cores
-- RAM: 4GB mínimo, 8GB recomendado
-- Disco: 10GB (para archivos temporales)
-- Python: 3.11+
-- Red: Acceso SFTP (puerto 22)
-
-**Frontend:**
-- Node.js: 18+
-- RAM: 512MB
-- Navegador: Chrome 90+, Firefox 88+, Safari 14+
-
-### Estructura de Archivos Generados
-
-```
-outputs/
-├── Consolidado_Crudo_2026-01-23_14-30.xlsx
-│   └── Hojas:
-│       ├── CONSOLIDADO_1 (primeros 500k servicios)
-│       ├── CONSOLIDADO_2 (siguientes 500k)
-│       └── CONSOLIDADO_N
-│
-├── Consolidado_Limpio_2026-01-23_14-30.xlsx
-│   └── Hojas:
-│       └── CONSOLIDADO (datos procesados con ML)
-│
-├── Alertas_2026-01-23_14-30.xlsx
-│   └── Hojas:
-│       ├── TODAS_ALERTAS
-│       ├── CONTRATOS_NO_ENCONTRADOS
-│       ├── HOJAS_SIN_SERVICIOS
-│       ├── FECHAS_FALTANTES
-│       └── [otras categorías]
-│
-├── Resumen_2026-01-23_14-30.xlsx
-│   └── Columnas: contrato, año, servicios, estado, alertas
-│
-└── Archivos_No_Positiva_2026-01-23_14-30.xlsx
-    └── Archivos detectados sin formato estándar
+Abre tu terminal y clona tu repositorio en la carpeta deseada:
+```bash
+git clone <URL_DE_TU_REPOSITORIO>
+cd consolidador-t25-app
 ```
 
 ---
 
-## Complejidad Algorítmica
+### 3. Configuración de la Base de Datos (Docker)
 
-**Procesamiento por Contrato:**
-- Búsqueda en SFTP: O(log n) con índice
-- Lectura de Excel: O(m) donde m = filas del archivo
-- Detección de sedes: O(s) donde s = número de sedes
-- Extracción de servicios: O(m × s)
-- Validación CUPS: O(1) por servicio
-- Limpieza ML: O(p × log p) donde p = servicios
+El proyecto utiliza un contenedor de Docker para levantar PostgreSQL sin necesidad de instalarlo manualmente en tu sistema operativo.
 
-**Complejidad Total:** O(n × m × s) donde:
-- n = número de contratos
-- m = promedio de filas por archivo
-- s = promedio de sedes por contrato
-
-**Optimizaciones Aplicadas:**
-- Carga lazy de archivos Excel
-- Procesamiento por chunks
-- Índices hash para validaciones
-- Cache de conexiones SFTP
-- Threading para paralelización
+1. Ve a la carpeta del backend donde se encuentra el archivo `docker-compose.yml`:
+   ```bash
+   cd backend
+   ```
+2. Levanta la base de datos (asegúrate de que Docker Desktop esté corriendo):
+   ```bash
+   docker compose up -d
+   ```
+*(Nota: Esto levantará PostgreSQL en el puerto `5433` y pgAdmin en el puerto `5050`)*
 
 ---
 
-## Métricas de Calidad
+### 4. Configuración del Backend (Python/FastAPI)
 
-**Cobertura de Validación:**
-- Código CUPS: 15 criterios de validación
-- Tarifas: 8 validaciones numéricas
-- Manuales: 6 validaciones semánticas
-- Descripciones: 5 filtros de ruido
+En la terminal, mantente en la carpeta `backend/` y sigue estos pasos:
 
-**Precisión de Detección:**
-- Encabezados de sedes: 98.5%
-- Encabezados de servicios: 99.2%
-- Códigos CUPS válidos: 97.8%
-- Columnas intercambiadas (ML): 94.3%
+1. **Crear y activar el entorno virtual:**
+   ```bash
+   # En Windows:
+   python -m venv venv
+   .\venv\Scripts\activate
+   
+   # En Mac/Linux:
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
 
-**Rendimiento:**
-- Throughput: ~100 contratos/hora
-- Latencia promedio por contrato: 35s
-- Tasa de reconexión SFTP: 0.02%
-- Uso de memoria: 2.5GB (pico)
+2. **Instalar dependencias:**
+   ```bash
+   pip install -r requirements.txt
+   playwright install chromium
+   ```
+
+3. **Configurar Variables de Entorno (.env):**
+   - El repositorio incluye un archivo llamado `.env.example`.
+   - Crea una copia de este archivo y renómbralo a `.env`:
+     ```bash
+     # En Windows PowerShell:
+     Copy-Item .env.example .env
+     
+     # En Linux/Mac:
+     cp .env.example .env
+     ```
+   - Abre el nuevo archivo `.env` en tu editor de código y completa las credenciales reales del SFTP, Base de datos y el Secret de JWT.
+
+4. **Levantar el Backend:**
+   ```bash
+   uvicorn app.main:app --reload --port 8000
+   ```
+   *(El backend, al detectar una base de datos vacía, creará automáticamente las tablas y el usuario administrador por defecto: `admin` / `Admin@Gestar2025!`)*
+
+---
+
+### 5. Configuración del Frontend (Next.js)
+
+Abre **una nueva pestaña** en tu terminal, ve a la raíz del proyecto y luego entra a la carpeta del frontend:
+
+```bash
+cd consolidador-t25-app/frontend
+```
+
+1. **Instalar dependencias:**
+   ```bash
+   npm install
+   ```
+
+2. **Configurar Variables de Entorno (.env.local):**
+   - El repositorio tiene un archivo llamado `.env.example`.
+   - Cópialo y renómbralo a `.env.local`:
+     ```bash
+     # En Windows PowerShell:
+     Copy-Item .env.example .env.local
+     
+     # En Linux/Mac:
+     cp .env.example .env.local
+     ```
+   - *Por defecto, este archivo apuntará a `http://localhost:8000/api` que es correcto para desarrollo local.*
+
+3. **Levantar el Frontend:**
+   ```bash
+   npm run dev
+   ```
+
+¡Listo! Ya puedes acceder a la aplicación en `http://localhost:3000`.
 
 ---
 
@@ -1219,6 +1212,6 @@ Copyright © 2026 - Todos los derechos reservados.
 
 ---
 
-**Versión:** 1.0.0
-**Última actualización:** 2026-01-23
+**Versión:** 16.0.0
+**Última actualización:** 2026-03-12
 **Autor:** Equipo de Desarrollo Consolidador T25
